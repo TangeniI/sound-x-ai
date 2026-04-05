@@ -1,0 +1,10 @@
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/spotify" }
+  ],
+  "functions": {
+    "api/spotify.ts": {
+      "runtime": "nodejs20.x"
+    }
+  }
+}
