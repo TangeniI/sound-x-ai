@@ -1,66 +1,79 @@
 /**
  * App.tsx
  *
- * Root component for Sound×AI.
- * Owns all shared state and wires every lib + component together.
+ * Root component. Owns shared state and wires the generative engines,
+ * the synth, the audio analyser and every visual together.
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import AudioReactiveBackground from "./components/AudioReactiveBackground";
-import type { AudioFeatures, NoteEvent as NoteEventType } from "./types";
-import CharacterDisplay                               from "./components/CharacterDisplay";
-import DNARadar                                       from "./components/DNARadar";
-import GeneratorPanel, { type GeneratorConfig }       from "./components/GeneratorPanel";
-import TrackTimeline                                  from "./components/TrackTimeline";
-import NowPlaying                                     from "./components/NowPlaying";
-import { magentaEngine }                              from "./lib/magenta-engine";
-import { toneSynth }                                  from "./lib/tone-synth";
-import { buildSingleTrackProfile }                    from "./lib/taste-profile";
+import CharacterDisplay from "./components/CharacterDisplay";
+import DNARadar from "./components/DNARadar";
+import GeneratorPanel from "./components/GeneratorPanel";
+import TrackTimeline from "./components/TrackTimeline";
+import AudioDropzone from "./components/AudioDropzone";
+import { generativeEngine, featuresFromConfig } from "./lib/generative-engine";
+import { magentaEngine } from "./lib/magenta-engine";
+import { toneSynth } from "./lib/tone-synth";
+import type { AudioFeatures, GeneratorConfig, NoteEvent } from "./types";
 
 export default function App() {
-  const [audioFeatures,  setAudioFeatures]  = useState<AudioFeatures | null>(null);
-  const [spotifyPlaying, setSpotifyPlaying] = useState(false);
-  const [progressMs,     setProgressMs]     = useState(0);
-  const [beatCount,      setBeatCount]      = useState(0);
-  const [notes,          setNotes]          = useState<NoteEventType[]>([]);
-  const [isGenerating,   setIsGenerating]   = useState(false);
-  const [genStatus,      setGenStatus]      = useState("READY");
-  const [synthPlaying,   setSynthPlaying]   = useState(false);
+  const [uploaded, setUploaded] = useState<AudioFeatures | null>(null);
+  const [active, setActive] = useState<AudioFeatures | null>(null);
+  const [notes, setNotes] = useState<NoteEvent[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [genStatus, setGenStatus] = useState("READY");
+  const [synthPlaying, setSynthPlaying] = useState(false);
   const [synthProgressMs, setSynthProgressMs] = useState(0);
-  const synthTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const [beatCount, setBeatCount] = useState(0);
+
+  const bpmRef = useRef(128);
+  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const handleBeat = useCallback(() => setBeatCount((c) => c + 1), []);
 
-  const handleAudioFeatures = useCallback((f: AudioFeatures | null) => {
-    setAudioFeatures(f);
+  const handleAnalysed = useCallback((f: AudioFeatures) => {
+    setUploaded(f);
+    setActive(f);
   }, []);
 
-  const handlePlayback = useCallback(
-    (p: { progressMs: number; isPlaying: boolean }) => {
-      setSpotifyPlaying(p.isPlaying);
-      setProgressMs(p.progressMs);
-    },
-    []
-  );
+  /** Build a beats[] grid so the background/character pulse to the track. */
+  function withBeats(f: AudioFeatures, durationSec: number): AudioFeatures {
+    const beatSec = 60 / f.tempo;
+    const beats = [];
+    for (let t = 0; t < durationSec; t += beatSec) beats.push({ start: t, duration: beatSec });
+    return { ...f, beats };
+  }
 
   const handleGenerate = async (cfg: GeneratorConfig) => {
     setIsGenerating(true);
-    setGenStatus("Initialising model…");
+    setGenStatus("[INIT] Preparing engine…");
+    handleStop();
     try {
-      await magentaEngine.init(cfg.model, setGenStatus);
-      const profile = audioFeatures
-        ? buildSingleTrackProfile(audioFeatures)
-        : null;
-      const generated = await magentaEngine.generate(cfg, profile, setGenStatus);
+      const seeded = cfg.seedFromAudio && uploaded ? uploaded : null;
+      const bpm = seeded ? Math.round(seeded.tempo) : cfg.tempo;
+      bpmRef.current = bpm;
+
+      let generated: NoteEvent[];
+      if (cfg.engine === "instant") {
+        generated = generativeEngine.generate(cfg, seeded, setGenStatus);
+      } else {
+        await magentaEngine.init(cfg.engine, setGenStatus);
+        generated = await magentaEngine.generate(cfg, seeded, setGenStatus);
+      }
       setNotes(generated);
 
+      const dna = seeded ?? featuresFromConfig(cfg);
+      const durationSec = generated.length ? Math.max(...generated.map((n) => n.endTime)) : 8;
+      setActive(withBeats(dna, durationSec));
+
       await toneSynth.init();
-      toneSynth.setBPM(cfg.tempo);
-      if (audioFeatures) toneSynth.setBrightness(audioFeatures.valence ?? 0.5);
+      toneSynth.setBPM(bpm);
+      toneSynth.setBrightness(dna.brightness ?? dna.valence);
       toneSynth.schedule(generated);
-      setGenStatus("READY — press ▶ to play");
+      setGenStatus("[READY] Press ▶ PLAY to hear it");
     } catch (e) {
-      setGenStatus(`ERROR: ${(e as Error).message}`);
+      setGenStatus(`[ERROR] ${(e as Error).message}`);
     } finally {
       setIsGenerating(false);
     }
@@ -69,172 +82,94 @@ export default function App() {
   const handleStop = () => {
     toneSynth.stop();
     setSynthPlaying(false);
-    clearInterval(synthTimerRef.current);
+    setSynthProgressMs(0);
+    clearInterval(timerRef.current);
+  };
+
+  const handlePlay = async () => {
+    if (synthPlaying) { handleStop(); return; }
+    await toneSynth.play();
+    setSynthPlaying(true);
+    setSynthProgressMs(0);
   };
 
   const handleExport = async () => {
     if (notes.length === 0) return;
-    const bpm = audioFeatures ? Math.round(audioFeatures.tempo ?? 120) : 120;
-    await toneSynth.downloadMidi(notes, bpm);
+    await toneSynth.downloadMidi(notes, bpmRef.current);
   };
 
-  // Rough synth progress ticker (Tone.js transport doesn't expose an event)
+  // playback ticker → progress + beat-driven character
   useEffect(() => {
-    if (synthPlaying) {
-      synthTimerRef.current = setInterval(() => {
-        setSynthProgressMs(toneSynth.getPositionSeconds() * 1000);
-      }, 250);
-    } else {
-      clearInterval(synthTimerRef.current);
-    }
-    return () => clearInterval(synthTimerRef.current);
+    if (!synthPlaying) { clearInterval(timerRef.current); return; }
+    let lastBeat = -1;
+    timerRef.current = setInterval(() => {
+      const sec = toneSynth.getPositionSeconds();
+      setSynthProgressMs(sec * 1000);
+      const beat = Math.floor(sec / (60 / bpmRef.current));
+      if (beat !== lastBeat) { lastBeat = beat; handleBeat(); }
+      if (sec * 1000 >= totalDurationMs + 200) handleStop();
+    }, 80);
+    return () => clearInterval(timerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [synthPlaying]);
 
-  const totalDurationMs = notes.length > 0
-    ? Math.max(...notes.map((n) => n.endTime)) * 1000
-    : 8000;
+  const totalDurationMs = notes.length > 0 ? Math.max(...notes.map((n) => n.endTime)) * 1000 : 8000;
 
   return (
     <>
-      <AudioReactiveBackground
-        audioFeatures={audioFeatures}
-        isPlaying={spotifyPlaying}
-        onBeat={handleBeat}
-        progressMs={progressMs}
-      />
+      <AudioReactiveBackground audioFeatures={active} isPlaying={synthPlaying} onBeat={handleBeat} progressMs={synthProgressMs} />
 
-      <div style={{
-        position:   "relative",
-        zIndex:     1,
-        minHeight:  "100vh",
-        padding:    "32px 40px",
-        display:    "flex",
-        flexDirection: "column",
-        gap:        28,
-        fontFamily: "var(--sans)",
-        color:      "#e8ffe8",
-        boxSizing:  "border-box",
-      }}>
-
-        {/* ── header ────────────────────────────────────────────────── */}
-        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div className="app-shell" style={{ position: "relative", zIndex: 1, minHeight: "100vh", padding: "32px 40px", display: "flex", flexDirection: "column", gap: 24, fontFamily: "var(--sans)", color: "#e8ffe8", boxSizing: "border-box" }}>
+        {/* header */}
+        <header className="app-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20 }}>
           <div>
-            <div style={{
-              fontFamily:    "var(--mono)",
-              fontSize:      9,
-              letterSpacing: "0.35em",
-              color:         "rgba(184,255,44,0.45)",
-              marginBottom:  4,
-            }}>
-              // TECHNO × AI
+            <div style={{ fontFamily: "var(--mono)", fontSize: 9, letterSpacing: "0.35em", color: "rgba(184,255,44,0.45)", marginBottom: 4 }}>
+              // SOUND × AI
             </div>
-            <h1 style={{
-              margin:      0,
-              fontSize:    22,
-              fontWeight:  800,
-              letterSpacing: "-0.02em",
-              color:       "#dcffc3",
-            }}>
-              Floor DNA Generator
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", color: "#dcffc3" }}>
+              Generative Audio Engine
             </h1>
-            <p style={{
-              margin:      "6px 0 0",
-              fontSize:    11,
-              fontFamily:  "var(--mono)",
-              letterSpacing: "0.14em",
-              color:       "rgba(232,255,235,0.28)",
-              maxWidth:    420,
-              lineHeight:  1.5,
-            }}>
-              Trained on your listening history · 4/4 tension and release, not genre paint-by-numbers
+            <p style={{ margin: "6px 0 0", fontSize: 11, fontFamily: "var(--mono)", letterSpacing: "0.12em", color: "rgba(232,255,235,0.3)", maxWidth: 520, lineHeight: 1.6 }}>
+              Synthesises original tracks from a learned model of temporal structure, tension &amp; release — drive it with the controls or drop in a track to clone its DNA.
             </p>
           </div>
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            {/* play generated audio button */}
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             {notes.length > 0 && (
-              <button
-                onClick={async () => {
-                  if (synthPlaying) {
-                    handleStop();
-                  } else {
-                    await toneSynth.play();
-                    setSynthPlaying(true);
-                    setSynthProgressMs(0);
-                  }
-                }}
-                style={{
-                  padding:      "8px 18px",
-                  border:       "1px solid rgba(184,255,44,0.4)",
-                  borderRadius: 10,
-                  background:   "rgba(184,255,44,0.08)",
-                  color:        "#b8ff2c",
-                  fontFamily:   "var(--mono)",
-                  fontSize:     9,
-                  letterSpacing: "0.25em",
-                  cursor:       "pointer",
-                }}
-              >
-                {synthPlaying ? "■ STOP" : "▶ PLAY GENERATED"}
+              <button onClick={handlePlay} style={{ padding: "9px 20px", border: "1px solid rgba(184,255,44,0.4)", borderRadius: 10, background: "rgba(184,255,44,0.08)", color: "#b8ff2c", fontFamily: "var(--mono)", fontSize: 9, letterSpacing: "0.25em", cursor: "pointer" }}>
+                {synthPlaying ? "■ STOP" : "▶ PLAY"}
               </button>
             )}
+            <a href="https://github.com/TangeniI/sound-x-ai" target="_blank" rel="noreferrer" style={{ padding: "9px 16px", border: "1px solid rgba(184,255,44,0.18)", borderRadius: 10, color: "rgba(184,255,44,0.5)", fontFamily: "var(--mono)", fontSize: 9, letterSpacing: "0.2em", textDecoration: "none" }}>
+              GITHUB ↗
+            </a>
           </div>
         </header>
 
-        {/* ── main grid ─────────────────────────────────────────────── */}
-        <div style={{
-          display:             "grid",
-          gridTemplateColumns: "320px 1fr 220px",
-          gridTemplateRows:    "auto auto",
-          gap:                 24,
-          alignItems:          "start",
-        }}>
-
-          {/* col 1: generator + now playing */}
+        {/* main grid */}
+        <div className="main-grid" style={{ display: "grid", gridTemplateColumns: "320px 1fr 220px", gap: 24, alignItems: "start" }}>
+          {/* col 1 */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <GeneratorPanel
-              audioFeatures={audioFeatures}
-              onGenerate={handleGenerate}
-              onStop={handleStop}
-              onExport={handleExport}
-              isGenerating={isGenerating}
-              status={genStatus}
-            />
-            <NowPlaying onAudioFeatures={handleAudioFeatures} onPlayback={handlePlayback} />
+            <GeneratorPanel features={uploaded} onGenerate={handleGenerate} onStop={handleStop} onExport={handleExport} isGenerating={isGenerating} status={genStatus} />
+            <AudioDropzone onAnalysed={handleAnalysed} />
           </div>
 
-          {/* col 2: timeline (full width) + character */}
+          {/* col 2 */}
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            <TrackTimeline
-              sequence={notes}
-              isPlaying={synthPlaying}
-              progressMs={synthProgressMs}
-              durationMs={totalDurationMs}
-              tempo={audioFeatures?.tempo ?? 120}
-            />
+            <TrackTimeline sequence={notes} isPlaying={synthPlaying} progressMs={synthProgressMs} durationMs={totalDurationMs} tempo={active?.tempo ?? 128} />
             <div style={{ display: "flex", justifyContent: "center", paddingTop: 8 }}>
-              <CharacterDisplay
-                beatCount={beatCount}
-                isPlaying={spotifyPlaying}
-                audioFeatures={audioFeatures}
-              />
+              <CharacterDisplay beatCount={beatCount} isPlaying={synthPlaying} audioFeatures={active} />
             </div>
           </div>
 
-          {/* col 3: DNA radar */}
+          {/* col 3 */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-            <DNARadar audioFeatures={audioFeatures} size={220} />
-            {audioFeatures && (
-              <div style={{
-                fontFamily:    "var(--mono)",
-                fontSize:      8.5,
-                color:         "rgba(184,255,44,0.30)",
-                letterSpacing: "0.18em",
-                textAlign:     "center",
-                lineHeight:    1.9,
-              }}>
-                {Math.round(audioFeatures.tempo)} BPM<br />
-                ENERGY {Math.round(audioFeatures.energy * 100)}%<br />
-                VALENCE {Math.round(audioFeatures.valence * 100)}%
+            <DNARadar audioFeatures={active} size={220} />
+            {active && (
+              <div style={{ fontFamily: "var(--mono)", fontSize: 8.5, color: "rgba(184,255,44,0.3)", letterSpacing: "0.18em", textAlign: "center", lineHeight: 1.9 }}>
+                {active.source ?? "DNA"}<br />
+                {Math.round(active.tempo)} BPM<br />
+                ENERGY {Math.round(active.energy * 100)}%<br />
+                VALENCE {Math.round(active.valence * 100)}%
               </div>
             )}
           </div>

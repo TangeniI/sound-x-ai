@@ -1,19 +1,21 @@
 /**
  * lib/taste-profile.ts
  *
- * Builds a "Musical DNA" profile from a user's Spotify listening history.
+ * Builds a "Musical DNA" profile from one or more AudioFeatures vectors
+ * (from the controls, or from analysing an uploaded track). Used by the
+ * optional Magenta deep-mode path to derive conditioning parameters.
  *
  * Pipeline:
- *   1. Receive RawTrackFeatures[] (from spotify.ts → fetchEnrichedHistory)
+ *   1. Receive AudioFeatures[]
  *   2. Compute weighted statistics across all features
- *   3. Cluster tracks into stylistic buckets (sparse K-means, k=3)
- *   4. Derive Magenta conditioning parameters from the profile
- *   5. Return a TasteProfile object consumed by magenta-engine.ts
+ *   3. Cluster into stylistic buckets (sparse K-means, k=3)
+ *   4. Derive conditioning parameters from the profile
+ *   5. Return a TasteProfile object
  *
  * Pure functions — no side-effects, no imports beyond types.
  */
 
-import type { RawTrackFeatures } from "./spotify";
+import type { AudioFeatures } from "../types";
 
 /* ─── output types ──────────────────────────────────────────────────────── */
 
@@ -182,7 +184,7 @@ function kMeans(vectors: FeatureVector[]): { assignments: number[]; centroids: F
  * @param tracks  Output of spotify.ts → fetchEnrichedHistory()
  * @returns       TasteProfile consumed by magenta-engine.ts
  */
-export function buildTasteProfile(tracks: RawTrackFeatures[]): TasteProfile {
+export function buildTasteProfile(tracks: AudioFeatures[]): TasteProfile {
   if (tracks.length === 0) {
     return buildDefaultProfile();
   }
@@ -245,19 +247,10 @@ export function buildTasteProfile(tracks: RawTrackFeatures[]): TasteProfile {
 
 /**
  * Build a real-time profile from a single track's audio features.
- * Used when "Seed from Spotify" is enabled in the GeneratorPanel.
+ * Used when "Seed from uploaded track" is enabled in the GeneratorPanel.
  */
-export function buildSingleTrackProfile(
-  features: Pick<RawTrackFeatures, "tempo" | "energy" | "valence" | "danceability" | "acousticness">
-): TasteProfile {
-  return buildTasteProfile([
-    {
-      id:     "live",
-      title:  "Current Track",
-      artist: "",
-      ...features,
-    },
-  ]);
+export function buildSingleTrackProfile(features: AudioFeatures): TasteProfile {
+  return buildTasteProfile([features]);
 }
 
 /**

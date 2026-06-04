@@ -28,7 +28,7 @@
  *   synth.dispose();
  */
 
-import type { NoteEvent } from "./magenta-engine";
+import type { NoteEvent } from "../types";
 
 /* ─── Tone.js type shims (actual types come from the package) ───────────── */
 // We import Tone dynamically to avoid SSR issues and keep types simple here.

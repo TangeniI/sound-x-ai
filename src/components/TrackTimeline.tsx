@@ -16,7 +16,7 @@
  *   tempo         — BPM for beat markers
  */
 
-import { useEffect, useRef } from "react";
+import React,{ useEffect, useRef } from "react";
 
 export interface NoteEvent {
   pitch:      number;  // MIDI 0-127
@@ -95,6 +95,9 @@ export default function TrackTimeline({
         const playheadActual = LABEL_W + (progressMs / 1000 / secPerPx) - scrollRef.current;
         scrollRef.current += (playheadActual - playheadTarget) * Math.min(dt * 4, 1);
         scrollRef.current = Math.max(0, scrollRef.current);
+      } else if (progressMs === 0) {
+        // reset to the start of the arrangement when stopped
+        scrollRef.current = 0;
       }
 
       ctx.clearRect(0, 0, W, H);

@@ -9,7 +9,7 @@
  *   - tempo scales rain speed
  *
  * Props:
- *   audioFeatures  — live Spotify audio features (nullable)
+ *   audioFeatures  — current track DNA / analysed features (nullable)
  *   isPlaying      — whether track is currently playing
  *   onBeat         — callback fired on each beat (for CharacterDisplay)
  *   beats          — beat timestamps from audio analysis (seconds)

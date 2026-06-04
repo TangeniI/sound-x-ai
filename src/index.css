@@ -39,3 +39,16 @@ body::before {
     rgba(0, 0, 0, 0.45) 4px
   );
 }
+
+/* ── responsive: stack the three columns on tablet/phone ───────────── */
+@media (max-width: 1040px) {
+  .app-shell { padding: 24px 18px !important; }
+  .main-grid { grid-template-columns: 1fr !important; }
+  .panel-card { width: 100% !important; max-width: 460px; }
+}
+
+@media (max-width: 640px) {
+  .app-shell { padding: 18px 14px !important; }
+  .app-header { flex-direction: column; align-items: flex-start !important; }
+}
+

@@ -1,36 +1,27 @@
 import { defineConfig } from "vite";
-import react            from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
 
-  // Proxy /api/* to Vercel dev server in local development
-  server: {
-    port: 5173,
-    proxy: {
-      "/api": {
-        target:       "http://localhost:3000",
-        changeOrigin: true,
-      },
-    },
-  },
+  server: { port: 5173 },
 
   optimizeDeps: {
-    // Magenta ships CommonJS bundles — force Vite to pre-bundle it
+    // Magenta ships CommonJS bundles — force Vite to pre-bundle it.
+    // It's only loaded lazily (deep mode), but pre-bundling avoids dev errors.
     include: ["@magenta/music", "tone", "@tonejs/midi"],
   },
 
   build: {
-    target:    "esnext",
-    // Magenta + TF.js are large; increase the chunk warning threshold
+    target: "esnext",
     chunkSizeWarningLimit: 4000,
     rollupOptions: {
       output: {
         manualChunks: {
-          magenta:    ["@magenta/music"],
-          tone:       ["tone"],
-          react:      ["react", "react-dom"],
-          framer:     ["framer-motion"],
+          magenta: ["@magenta/music"],
+          tone: ["tone"],
+          react: ["react", "react-dom"],
+          framer: ["framer-motion"],
         },
       },
     },
