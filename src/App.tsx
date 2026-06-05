@@ -13,7 +13,6 @@ import GeneratorPanel from "./components/GeneratorPanel";
 import TrackTimeline from "./components/TrackTimeline";
 import AudioDropzone from "./components/AudioDropzone";
 import { generativeEngine, featuresFromConfig } from "./lib/generative-engine";
-import { magentaEngine } from "./lib/magenta-engine";
 import { toneSynth } from "./lib/tone-synth";
 import type { AudioFeatures, GeneratorConfig, NoteEvent } from "./types";
 
@@ -54,13 +53,7 @@ export default function App() {
       const bpm = seeded ? Math.round(seeded.tempo) : cfg.tempo;
       bpmRef.current = bpm;
 
-      let generated: NoteEvent[];
-      if (cfg.engine === "instant") {
-        generated = generativeEngine.generate(cfg, seeded, setGenStatus);
-      } else {
-        await magentaEngine.init(cfg.engine, setGenStatus);
-        generated = await magentaEngine.generate(cfg, seeded, setGenStatus);
-      }
+      const generated = generativeEngine.generate(cfg, seeded, setGenStatus);
       setNotes(generated);
 
       const dna = seeded ?? featuresFromConfig(cfg);

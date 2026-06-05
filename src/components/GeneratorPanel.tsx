@@ -9,7 +9,7 @@
 
 import { useState, useEffect, type CSSProperties } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { AudioFeatures, EngineId, GeneratorConfig } from "../types";
+import type { AudioFeatures, GeneratorConfig, StyleId } from "../types";
 
 export type { GeneratorConfig };
 
@@ -25,11 +25,11 @@ interface Props {
 const ACID = "#b8ff2c";
 const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
-const ENGINES: { id: EngineId; label: string; desc: string; deep?: boolean }[] = [
-  { id: "instant", label: "IN-HOUSE", desc: "Markov + harmony · instant" },
-  { id: "magenta-vae", label: "MUSIC VAE", desc: "deep · ~45MB load", deep: true },
-  { id: "magenta-melody", label: "MELODY RNN", desc: "deep · ~20MB load", deep: true },
-  { id: "magenta-drums", label: "DRUMS RNN", desc: "deep · ~20MB load", deep: true },
+const STYLES: { id: StyleId; label: string; desc: string }[] = [
+  { id: "driving", label: "DRIVING", desc: "rolling bass · peak-time" },
+  { id: "hypnotic", label: "HYPNOTIC", desc: "minimal · deep groove" },
+  { id: "acid", label: "ACID", desc: "303 line · squelch" },
+  { id: "melodic", label: "MELODIC", desc: "pads · melodic techno" },
 ];
 
 /* ─── slider ───────────────────────────────────────────────────────── */
@@ -81,7 +81,7 @@ export default function GeneratorPanel({
   isGenerating = false,
   status = "READY",
 }: Props) {
-  const [engine, setEngine] = useState<EngineId>("instant");
+  const [style, setStyle] = useState<StyleId>("driving");
   const [tempo, setTempo] = useState(128);
   const [bars, setBars] = useState(8);
   const [energy, setEnergy] = useState(0.7);
@@ -99,8 +99,9 @@ export default function GeneratorPanel({
     setEnergy(parseFloat(features.energy.toFixed(2)));
     setValence(parseFloat(features.valence.toFixed(2)));
     setDensity(parseFloat(features.danceability.toFixed(2)));
+    if (features.rootPitch != null) setRootPitch(features.rootPitch);
     setSeedFromAudio(true);
-    addLog(`[ANALYSIS] ${features.source ?? "TRACK"} → tempo ${Math.round(features.tempo)}, energy ${features.energy.toFixed(2)}`);
+    addLog(`[ANALYSIS] ${features.source ?? "TRACK"} → ${NOTES[features.rootPitch ?? 0]} ${features.mode ?? ""} · ${Math.round(features.tempo)} BPM`);
   }, [features]);
 
   useEffect(() => {
@@ -113,7 +114,7 @@ export default function GeneratorPanel({
 
   function handleGenerate() {
     const cfg: GeneratorConfig = {
-      engine,
+      style,
       bars,
       tempo,
       energy,
@@ -123,7 +124,7 @@ export default function GeneratorPanel({
       rootPitch,
       seedFromAudio: seedFromAudio && !!features,
     };
-    addLog(`[RUN] ${engine.toUpperCase()} · ${NOTES[rootPitch]} · ${bars} bars`);
+    addLog(`[RUN] ${style.toUpperCase()} · ${NOTES[rootPitch]} · ${bars} bars`);
     onGenerate?.(cfg);
   }
 
@@ -136,28 +137,28 @@ export default function GeneratorPanel({
         <div style={{ width: 6, height: 6, borderRadius: "50%", background: isGenerating ? ACID : "rgba(184,255,44,0.25)", boxShadow: isGenerating ? `0 0 10px ${ACID}` : "none", animation: isGenerating ? "genPulse 0.8s ease-in-out infinite alternate" : "none" }} />
       </div>
 
-      {/* engine selector */}
+      {/* style selector */}
       <div style={{ marginBottom: 16 }}>
-        <div style={{ ...labelSx, marginBottom: 8 }}>ENGINE</div>
+        <div style={{ ...labelSx, marginBottom: 8 }}>STYLE</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-          {ENGINES.map((m) => (
+          {STYLES.map((m) => (
             <button
               key={m.id}
-              onClick={() => setEngine(m.id)}
+              onClick={() => setStyle(m.id)}
               style={{
-                padding: "7px 6px",
+                padding: "7px 8px",
                 textAlign: "left",
-                border: `1px solid ${engine === m.id ? ACID : "rgba(184,255,44,0.12)"}`,
+                border: `1px solid ${style === m.id ? ACID : "rgba(184,255,44,0.12)"}`,
                 borderRadius: 8,
-                background: engine === m.id ? "rgba(184,255,44,0.08)" : "transparent",
+                background: style === m.id ? "rgba(184,255,44,0.08)" : "transparent",
                 cursor: "pointer",
                 transition: "all 0.2s",
               }}
             >
-              <div style={{ fontFamily: "var(--mono)", fontSize: 8, letterSpacing: "0.14em", color: engine === m.id ? ACID : "rgba(184,255,44,0.32)", marginBottom: 3 }}>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 8.5, letterSpacing: "0.14em", color: style === m.id ? ACID : "rgba(184,255,44,0.32)", marginBottom: 3 }}>
                 {m.label}
               </div>
-              <div style={{ fontFamily: "var(--mono)", fontSize: 6.5, color: m.deep ? "rgba(255,180,44,0.4)" : "rgba(184,255,44,0.2)", lineHeight: 1.4 }}>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 6.5, color: "rgba(184,255,44,0.22)", lineHeight: 1.4 }}>
                 {m.desc}
               </div>
             </button>

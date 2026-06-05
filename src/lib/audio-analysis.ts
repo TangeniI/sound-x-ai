@@ -48,8 +48,9 @@ export async function analyseAudioFile(
   onStatus("[RMS] Measuring loudness envelope…");
   const energy = computeEnergy(mono);
 
-  onStatus("[FFT] Computing spectral centroid…");
-  const { brightness, acousticness } = computeSpectral(mono, sampleRate);
+  onStatus("[FFT] Spectral centroid + chroma key…");
+  const { brightness, acousticness, chroma } = computeSpectral(mono, sampleRate);
+  const { rootPitch, mode } = estimateKey(chroma);
 
   onStatus("[ONSET] Estimating tempo from onset flux…");
   const { tempo, danceability } = estimateTempo(mono, sampleRate);
@@ -57,6 +58,7 @@ export async function analyseAudioFile(
   // valence heuristic: brighter + more energetic + faster ≈ happier
   const valence = clamp(brightness * 0.5 + energy * 0.3 + clamp((tempo - 90) / 90) * 0.2);
 
+  const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
   const features: AudioFeatures = {
     tempo: Math.round(tempo),
     energy: clamp(energy),
@@ -64,12 +66,14 @@ export async function analyseAudioFile(
     danceability: clamp(danceability),
     acousticness: clamp(acousticness),
     brightness: clamp(brightness),
+    rootPitch,
+    mode,
     source: file.name.replace(/\.[^.]+$/, "").slice(0, 22).toUpperCase(),
   };
 
   onStatus(
-    `[DNA] tempo=${features.tempo} energy=${features.energy.toFixed(2)} ` +
-      `valence=${features.valence.toFixed(2)} dance=${features.danceability.toFixed(2)}`
+    `[DNA] ${features.tempo} BPM · ${KEYS[rootPitch]} ${mode} · ` +
+      `energy ${Math.round(features.energy * 100)}%`
   );
   return features;
 }
@@ -89,14 +93,17 @@ function computeEnergy(mono: Float32Array): number {
 function computeSpectral(mono: Float32Array, sampleRate: number): {
   brightness: number;
   acousticness: number;
+  chroma: number[];
 } {
   const N = 4096;
-  const hop = Math.floor(mono.length / 40) || N; // ~40 frames across the track
+  const hop = Math.floor(mono.length / 60) || N; // ~60 frames across the track
   const window = hann(N);
 
   let centroidAcc = 0;
   let highRatioAcc = 0;
   let frames = 0;
+  const chroma = new Array(12).fill(0);
+  const C0 = 16.3516; // Hz, MIDI note 0
 
   const re = new Float32Array(N);
   const im = new Float32Array(N);
@@ -120,6 +127,11 @@ function computeSpectral(mono: Float32Array, sampleRate: number): {
       weighted += mag * freq;
       if (k > cutoffBin) highSum += mag;
       else lowSum += mag;
+      // fold into a pitch class (only the musically useful 60–2000 Hz band)
+      if (freq > 60 && freq < 2000) {
+        const pc = ((Math.round(12 * Math.log2(freq / C0)) % 12) + 12) % 12;
+        chroma[pc] += mag;
+      }
     }
     if (magSum > 0) {
       centroidAcc += weighted / magSum;
@@ -128,15 +140,24 @@ function computeSpectral(mono: Float32Array, sampleRate: number): {
     }
   }
 
-  if (frames === 0) return { brightness: 0.5, acousticness: 0.5 };
-  const centroid = centroidAcc / frames; // Hz
+  if (frames === 0) return { brightness: 0.5, acousticness: 0.5, chroma };
+  const centroid = centroidAcc / frames;
   const highRatio = highRatioAcc / frames;
+  return {
+    brightness: clamp((centroid - 500) / 4500),
+    acousticness: clamp(1 - highRatio * 1.6),
+    chroma,
+  };
+}
 
-  // centroid ~500Hz (dark) .. ~5000Hz (bright)
-  const brightness = clamp((centroid - 500) / 4500);
-  // lots of high-freq energy → synthetic/electronic → low acousticness
-  const acousticness = clamp(1 - highRatio * 1.6);
-  return { brightness, acousticness };
+/** Estimate musical key from a chroma vector: argmax = root, third = mode. */
+function estimateKey(chroma: number[]): { rootPitch: number; mode: "major" | "minor" } {
+  let root = 0;
+  let max = -Infinity;
+  for (let i = 0; i < 12; i++) if (chroma[i] > max) { max = chroma[i]; root = i; }
+  const minorThird = chroma[(root + 3) % 12];
+  const majorThird = chroma[(root + 4) % 12];
+  return { rootPitch: root, mode: minorThird >= majorThird ? "minor" : "major" };
 }
 
 /* ────────────────────────── tempo estimation ─────────────────────── */

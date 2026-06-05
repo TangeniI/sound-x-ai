@@ -7,18 +7,14 @@ export default defineConfig({
   server: { port: 5173 },
 
   optimizeDeps: {
-    // Magenta ships CommonJS bundles — force Vite to pre-bundle it.
-    // It's only loaded lazily (deep mode), but pre-bundling avoids dev errors.
-    include: ["@magenta/music", "tone", "@tonejs/midi"],
+    include: ["tone", "@tonejs/midi"],
   },
 
   build: {
     target: "esnext",
-    chunkSizeWarningLimit: 4000,
     rollupOptions: {
       output: {
         manualChunks: {
-          magenta: ["@magenta/music"],
           tone: ["tone"],
           react: ["react", "react-dom"],
           framer: ["framer-motion"],

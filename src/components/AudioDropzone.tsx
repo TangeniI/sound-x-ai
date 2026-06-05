@@ -12,6 +12,7 @@ import type { AudioFeatures } from "../types";
 import { analyseAudioFile } from "../lib/audio-analysis";
 
 const ACID = "#b8ff2c";
+const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 interface Props {
   onAnalysed: (features: AudioFeatures) => void;
@@ -102,21 +103,26 @@ export default function AudioDropzone({ onAnalysed }: Props) {
       )}
 
       {result && (
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 14px" }}>
-          {([
-            ["SOURCE", result.source ?? "—"],
-            ["TEMPO", `${result.tempo} BPM`],
-            ["ENERGY", `${Math.round(result.energy * 100)}%`],
-            ["VALENCE", `${Math.round(result.valence * 100)}%`],
-            ["DANCE", `${Math.round(result.danceability * 100)}%`],
-            ["ACOUSTIC", `${Math.round(result.acousticness * 100)}%`],
-          ] as [string, string][]).map(([k, v]) => (
-            <div key={k} style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ fontFamily: '"SF Mono", monospace', fontSize: 8, color: "rgba(184,255,44,0.3)", letterSpacing: "0.12em" }}>{k}</span>
-              <span style={{ fontFamily: '"SF Mono", monospace', fontSize: 8, color: ACID, letterSpacing: "0.06em" }}>{v}</span>
-            </div>
-          ))}
-        </div>
+        <>
+          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 14px" }}>
+            {([
+              ["SOURCE", result.source ?? "—"],
+              ["KEY", `${KEYS[result.rootPitch ?? 0]} ${result.mode ?? ""}`],
+              ["TEMPO", `${result.tempo} BPM`],
+              ["ENERGY", `${Math.round(result.energy * 100)}%`],
+              ["DANCE", `${Math.round(result.danceability * 100)}%`],
+              ["BRIGHT", `${Math.round((result.brightness ?? 0) * 100)}%`],
+            ] as [string, string][]).map(([k, v]) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontFamily: '"SF Mono", monospace', fontSize: 8, color: "rgba(184,255,44,0.3)", letterSpacing: "0.12em" }}>{k}</span>
+                <span style={{ fontFamily: '"SF Mono", monospace', fontSize: 8, color: ACID, letterSpacing: "0.06em" }}>{v}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 10, fontFamily: '"SF Mono", monospace', fontSize: 7.5, color: "rgba(184,255,44,0.3)", lineHeight: 1.6, letterSpacing: "0.05em" }}>
+            ↑ seeds tempo, key &amp; energy — generates an original track in that DNA, not a remix. Hit GENERATE.
+          </div>
+        </>
       )}
     </div>
   );

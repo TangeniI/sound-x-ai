@@ -17,14 +17,7 @@
  */
 
 import React,{ useEffect, useRef } from "react";
-
-export interface NoteEvent {
-  pitch:      number;  // MIDI 0-127
-  startTime:  number;  // seconds
-  endTime:    number;  // seconds
-  velocity:   number;  // 0-127
-  instrument: "melody" | "chords" | "drums";
-}
+import type { NoteEvent } from "../types";
 
 interface Props {
   sequence?:   NoteEvent[];
@@ -35,20 +28,22 @@ interface Props {
 }
 
 const ACID      = "rgba(184,255,44,";
-const LANE_H    = 64;          // px per track lane
-const LANES     = ["MELODY", "CHORDS", "DRUMS"] as const;
+const LANE_H    = 48;          // px per track lane
+const LANES     = ["LEAD", "STAB", "BASS", "DRUMS"] as const;
 const LABEL_W   = 60;          // px for lane labels
 
 const LANE_COLORS: Record<string, string> = {
-  MELODY: "rgba(184,255,44,",
-  CHORDS: "rgba(44,220,255,",
-  DRUMS:  "rgba(255,180,44,",
+  LEAD:  "rgba(184,255,44,",
+  STAB:  "rgba(44,220,255,",
+  BASS:  "rgba(255,90,160,",
+  DRUMS: "rgba(255,180,44,",
 };
 
 const LANE_INST: Record<string, NoteEvent["instrument"]> = {
-  MELODY: "melody",
-  CHORDS: "chords",
-  DRUMS:  "drums",
+  LEAD:  "lead",
+  STAB:  "stab",
+  BASS:  "bass",
+  DRUMS: "drums",
 };
 
 function pitchToLaneY(pitch: number, laneIndex: number): number {

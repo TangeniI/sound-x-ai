@@ -194,6 +194,14 @@ export default function CharacterDisplay({ beatCount = 0, isPlaying, audioFeatur
     });
   }, [breakdown, isPlaying, intro, beatSec, bodyCtrl, floorCtrl]);
 
+  const QUIPS: Record<string, string> = {
+    IDLE:   "booting… feed me a track",
+    LOCKED: "locked to the grid",
+    KICK:   "ride the kick",
+    STEP:   "in the pocket",
+    RIDE:   "breakdown… here it comes",
+  };
+
   const W_SVG = 32 * PX;
   const H_SVG = 26 * PX;
 
@@ -210,12 +218,22 @@ export default function CharacterDisplay({ beatCount = 0, isPlaying, audioFeatur
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
       <div style={{
         fontFamily:    "var(--mono)",
-        fontSize:      9,
-        letterSpacing: "0.32em",
-        color:         intro ? ACID : "rgba(184,255,44,0.42)",
+        fontSize:      11,
+        fontWeight:    700,
+        letterSpacing: "0.28em",
+        color:         isPlaying ? ACID : "rgba(184,255,44,0.6)",
         transition:    "color 0.15s",
       }}>
-        // {label}.EXE
+        REZ<span style={{ color: "rgba(184,255,44,0.3)" }}>-909</span>
+        <span style={{
+          fontSize: 7.5,
+          fontWeight: 400,
+          letterSpacing: "0.2em",
+          color: isPlaying ? "rgba(184,255,44,0.45)" : "rgba(184,255,44,0.25)",
+          marginLeft: 8,
+        }}>
+          {label}
+        </span>
       </div>
 
       <div style={{ position: "relative", width: W_SVG + 48, height: H_SVG + 28 }}>
@@ -283,9 +301,11 @@ export default function CharacterDisplay({ beatCount = 0, isPlaying, audioFeatur
         textAlign:     "center",
         lineHeight:    1.6,
       }}>
-        4/4 · {Math.round(bpm)} BPM
+        <span style={{ color: "rgba(184,255,44,0.5)", letterSpacing: "0.15em" }}>
+          “{QUIPS[label] ?? "…"}”
+        </span>
         <br />
-        BEAT {String(beatCount % 999).padStart(3, "0")}
+        4/4 · {Math.round(bpm)} BPM · BEAT {String(beatCount % 999).padStart(3, "0")}
       </div>
     </div>
   );

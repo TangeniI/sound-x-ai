@@ -1,56 +1,45 @@
 /**
  * src/types.ts
  * Single source of truth for shared types across components + lib.
- * Import from here — never redefine these locally.
  */
 
-/** Normalised audio "DNA" — produced by the controls or by analysing an
- *  uploaded audio file in-browser. All fields except tempo are 0–1. */
+/** Normalised audio "DNA" — from the controls or from analysing a track. */
 export interface AudioFeatures {
   tempo:        number; // BPM
-  energy:       number; // 0–1  overall intensity / loudness
-  valence:      number; // 0–1  musical positivity (dark → bright, minor → major)
-  danceability: number; // 0–1  rhythmic regularity / groove
-  acousticness: number; // 0–1  organic vs. electronic timbre
-  brightness?:  number; // 0–1  spectral centroid (timbre openness)
+  energy:       number; // 0–1  overall intensity
+  valence:      number; // 0–1  dark → bright (also minor → major)
+  danceability: number; // 0–1  groove / rhythmic drive
+  acousticness: number; // 0–1  organic vs. electronic
+  brightness?:  number; // 0–1  spectral centroid (timbre)
+  rootPitch?:   number; // 0–11 detected key root (C..B)
+  mode?:        "major" | "minor"; // detected tonality
   beats?:       { start: number; duration: number }[];
-  /** label shown in the UI for where this DNA came from */
-  source?:      string;
+  source?:      string; // label for where this DNA came from
 }
 
-/** A single scheduled note across any instrument lane. */
+/** Instrument lanes the engine writes to. */
+export type Instrument = "lead" | "stab" | "bass" | "drums";
+
+/** A single scheduled note. */
 export interface NoteEvent {
   pitch:      number; // MIDI 0–127
   startTime:  number; // seconds
   endTime:    number; // seconds
   velocity:   number; // 0–127
-  instrument: "melody" | "chords" | "drums";
+  instrument: Instrument;
 }
 
-/** Which generation engine to run. */
-export type EngineId =
-  | "instant"        // bespoke in-house engine — full arrangement, instant
-  | "magenta-vae"    // Google MusicVAE latent sampling (deep mode)
-  | "magenta-melody" // Google MelodyRNN continuation (deep mode)
-  | "magenta-drums"; // Google DrumsRNN continuation (deep mode)
-
-/** Musical mode used by the bespoke engine. */
-export type ScaleId =
-  | "natural-minor"
-  | "harmonic-minor"
-  | "dorian"
-  | "major"
-  | "lydian"
-  | "phrygian";
+/** Techno style presets — each reshapes the whole arrangement. */
+export type StyleId = "driving" | "hypnotic" | "acid" | "melodic";
 
 export interface GeneratorConfig {
-  engine:        EngineId;
+  style:         StyleId;
   bars:          number;  // arrangement length
   tempo:         number;  // BPM
   energy:        number;  // 0–1
-  valence:       number;  // 0–1
+  valence:       number;  // 0–1  (mood: minor/dark → major/bright)
   density:       number;  // 0–1  rhythmic busyness
-  variation:     number;  // 0–1  Markov temperature
+  variation:     number;  // 0–1  amount of pattern mutation
   rootPitch:     number;  // MIDI pitch class 0–11 (C..B)
   seedFromAudio: boolean; // condition on analysed upload when available
 }
