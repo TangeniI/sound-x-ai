@@ -21,6 +21,7 @@ interface Props {
   onExportWav?: () => void;    // rendered WAV
   onExportStems?: () => void;  // per-instrument WAV stems
   hasTrack?: boolean;
+  neuralReady?: boolean;
   isGenerating?: boolean;
   status?: string;
 }
@@ -84,6 +85,7 @@ export default function GeneratorPanel({
   onExportWav,
   onExportStems,
   hasTrack = false,
+  neuralReady = false,
   isGenerating = false,
   status = "READY",
 }: Props) {
@@ -140,7 +142,17 @@ export default function GeneratorPanel({
         <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.3em", color: "rgba(184,255,44,0.5)" }}>
           // GENERATOR.EXE
         </span>
-        <div style={{ width: 6, height: 6, borderRadius: "50%", background: isGenerating ? ACID : "rgba(184,255,44,0.25)", boxShadow: isGenerating ? `0 0 10px ${ACID}` : "none", animation: isGenerating ? "genPulse 0.8s ease-in-out infinite alternate" : "none" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span title="GRU riff model trained in NumPy, running in-browser" style={{
+            fontFamily: "var(--mono)", fontSize: 7, letterSpacing: "0.12em",
+            padding: "2px 6px", borderRadius: 5,
+            border: `1px solid rgba(184,255,44,${neuralReady ? 0.35 : 0.12})`,
+            color: `rgba(184,255,44,${neuralReady ? 0.7 : 0.3})`,
+          }}>
+            {neuralReady ? "◉ NEURAL" : "○ NEURAL…"}
+          </span>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: isGenerating ? ACID : "rgba(184,255,44,0.25)", boxShadow: isGenerating ? `0 0 10px ${ACID}` : "none", animation: isGenerating ? "genPulse 0.8s ease-in-out infinite alternate" : "none" }} />
+        </div>
       </div>
 
       {/* style selector */}

@@ -13,6 +13,7 @@ import GeneratorPanel from "./components/GeneratorPanel";
 import TrackTimeline from "./components/TrackTimeline";
 import AudioDropzone from "./components/AudioDropzone";
 import { generativeEngine, featuresFromConfig } from "./lib/generative-engine";
+import { neuralRiff } from "./lib/neural-engine";
 import { toneSynth } from "./lib/tone-synth";
 import type { AudioFeatures, GeneratorConfig, NoteEvent } from "./types";
 
@@ -25,9 +26,13 @@ export default function App() {
   const [synthPlaying, setSynthPlaying] = useState(false);
   const [synthProgressMs, setSynthProgressMs] = useState(0);
   const [beatCount, setBeatCount] = useState(0);
+  const [neuralReady, setNeuralReady] = useState(false);
 
   const bpmRef = useRef(128);
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+
+  // preload the trained riff model (falls back to Markov until ready)
+  useEffect(() => { neuralRiff.load().then(() => setNeuralReady(neuralRiff.ready)); }, []);
 
   const handleBeat = useCallback(() => setBeatCount((c) => c + 1), []);
 
@@ -162,7 +167,7 @@ export default function App() {
         <div className="main-grid" style={{ display: "grid", gridTemplateColumns: "320px 1fr 220px", gap: 24, alignItems: "start" }}>
           {/* col 1 */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <GeneratorPanel features={uploaded} onGenerate={handleGenerate} onStop={handleStop} onExport={handleExport} onExportWav={handleExportWav} onExportStems={handleExportStems} hasTrack={notes.length > 0} isGenerating={isGenerating} status={genStatus} />
+            <GeneratorPanel features={uploaded} onGenerate={handleGenerate} onStop={handleStop} onExport={handleExport} onExportWav={handleExportWav} onExportStems={handleExportStems} hasTrack={notes.length > 0} neuralReady={neuralReady} isGenerating={isGenerating} status={genStatus} />
             <AudioDropzone onAnalysed={handleAnalysed} />
           </div>
 

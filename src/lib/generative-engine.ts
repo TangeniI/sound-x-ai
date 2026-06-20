@@ -31,6 +31,7 @@
  */
 
 import type { AudioFeatures, GeneratorConfig, NoteEvent, StyleId } from "../types";
+import { neuralRiff } from "./neural-engine";
 
 export type StatusCallback = (msg: string) => void;
 
@@ -176,14 +177,18 @@ export class GenerativeEngine {
     if (seeded) onStatus(`[SEED] key + tempo locked to ${seeded.source ?? "upload"}`);
 
     // generate the looping patterns ONCE
-    onStatus("[RIFF] sampling Markov motif…");
     const bassRoot = 28 + root;  // ~E1
     const midRoot = 48 + root;   // ~C3
     const leadRoot = 60 + root;  // ~C4
 
+    // lead riff: trained GRU when the model is loaded, else the Markov motif model
+    const useNeural = neuralRiff.ready && style.lead !== "acid";
+    const neuralDegrees = useNeural ? neuralRiff.sample(SPB, 0.55 + cfg.variation * 0.7, rng) : null;
+    onStatus(useNeural ? "[NEURAL] GRU riff model (trained, H=32)" : "[RIFF] sampling Markov motif…");
+
     const bassPat = buildBass(style.bass, scale, bassRoot, density, rng);
     const stabPat = buildStab(scale, midRoot, rng);
-    const leadPat = buildLead(style.lead, scale, leadRoot, bassRoot, cfg.variation, rng);
+    const leadPat = buildLead(style.lead, scale, leadRoot, bassRoot, cfg.variation, rng, neuralDegrees);
     const hatPat = buildHats(style.hats, density);
 
     onStatus("[ARRANGE] laying drive → full → breakdown → drop…");
@@ -239,7 +244,7 @@ export class GenerativeEngine {
       }
     }
 
-    onStatus(`[DONE] ${notes.length} events · bass + drums + stab + lead`);
+    onStatus(`[DONE] ${notes.length} events · ${useNeural ? "GRU" : "Markov"} lead + bass + drums + stab`);
     return notes.sort((a, b) => a.startTime - b.startTime);
   }
 }
@@ -278,12 +283,22 @@ function buildStab(scale: readonly number[], root: number, rng: () => number): (
   return pat;
 }
 
-function buildLead(mode: Style["lead"], scale: readonly number[], leadRoot: number, bassRoot: number, variation: number, rng: () => number): (number | null)[] {
+function buildLead(mode: Style["lead"], scale: readonly number[], leadRoot: number, bassRoot: number, variation: number, rng: () => number, neuralDegrees: (number | null)[] | null = null): (number | null)[] {
   const pat: (number | null)[] = new Array(SPB).fill(null);
   if (mode === "acid") {
     // mirror an acid bassline up high
     const b = buildBass("acid", scale, bassRoot, 0.7, rng);
     for (let s = 0; s < SPB; s++) pat[s] = b[s] === null ? null : b[s]! + 24;
+    return pat;
+  }
+  // trained GRU riff: map sampled scale-degrees → MIDI (thin for minimal)
+  if (neuralDegrees && neuralDegrees.length >= SPB) {
+    for (let s = 0; s < SPB; s++) {
+      const d = neuralDegrees[s];
+      if (d === null) continue;
+      if (mode === "minimal" && s % 2 === 1 && rng() < 0.6) continue;
+      pat[s] = degToMidi(d, scale, leadRoot);
+    }
     return pat;
   }
   const notesPerBar = mode === "minimal" ? 3 : mode === "melodic" ? 7 : 5;
