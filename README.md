@@ -6,7 +6,8 @@ no backend, no API keys, no account.
 
 Pick a style and shape the track with the controls, or **drop in any audio file** and
 it analyses the track in-browser (tempo, key, energy, brightness) and clones its
-"DNA" to seed the generation.
+"DNA" to seed the generation. Then **edit the piano roll** by clicking, export
+**WAV / stems / MIDI**, or **share a permalink** that encodes the whole recipe.
 
 > **Live demo:** _your Vercel URL_ · works instantly on first click.
 

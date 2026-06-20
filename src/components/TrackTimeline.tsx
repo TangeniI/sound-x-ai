@@ -25,6 +25,8 @@ interface Props {
   progressMs?: number;
   durationMs?: number;
   tempo?:      number;
+  /** click-to-edit: fired with the grid position that was clicked */
+  onEdit?:     (timeSec: number, laneIndex: number, pitchFrac: number) => void;
 }
 
 const ACID      = "rgba(184,255,44,";
@@ -58,10 +60,27 @@ export default function TrackTimeline({
   progressMs = 0,
   durationMs = 8000,
   tempo = 120,
+  onEdit,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef    = useRef<number>(0);
   const scrollRef = useRef<number>(0);
+
+  function handleClick(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (!onEdit) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) * canvas.width) / rect.width;
+    const y = ((e.clientY - rect.top) * canvas.height) / rect.height;
+    if (x < LABEL_W) return;
+    const CONTENT_W = canvas.width - LABEL_W;
+    const secPerPx = durationMs / 1000 / CONTENT_W;
+    const timeSec = (x - LABEL_W + scrollRef.current) * secPerPx;
+    const laneIndex = Math.max(0, Math.min(LANES.length - 1, Math.floor(y / LANE_H)));
+    const pitchFrac = 1 - (y - laneIndex * LANE_H) / LANE_H;
+    onEdit(timeSec, laneIndex, pitchFrac);
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -237,21 +256,23 @@ export default function TrackTimeline({
   }, [sequence, isPlaying, progressMs, durationMs, tempo]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{
-        fontFamily:    '"SF Mono", "Fira Code", monospace',
-        fontSize:      9,
-        letterSpacing: "0.28em",
-        color:         "rgba(184,255,44,0.35)",
-      }}>
-        // TRACK.TIMELINE
+    <div data-notes={sequence.length} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontFamily: '"SF Mono", "Fira Code", monospace', fontSize: 9, letterSpacing: "0.28em", color: "rgba(184,255,44,0.35)" }}>
+          // TRACK.TIMELINE
+        </span>
+        {onEdit && sequence.length > 0 && (
+          <span style={{ fontFamily: '"SF Mono", monospace', fontSize: 7.5, letterSpacing: "0.14em", color: "rgba(184,255,44,0.3)" }}>
+            click to add · click a note to remove
+          </span>
+        )}
       </div>
       <div style={{
         border:        "1px solid rgba(184,255,44,0.08)",
         borderRadius:  10,
         overflow:      "hidden",
       }}>
-        <canvas ref={canvasRef} style={{ display: "block", width: "100%" }} />
+        <canvas ref={canvasRef} onClick={handleClick} style={{ display: "block", width: "100%", cursor: onEdit ? "crosshair" : "default" }} />
       </div>
     </div>
   );

@@ -10,6 +10,7 @@
 import { useState, useEffect, type CSSProperties } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { AudioFeatures, GeneratorConfig, StyleId } from "../types";
+import { shareURL, parseConfigFromURL } from "../lib/share";
 
 export type { GeneratorConfig };
 
@@ -89,16 +90,20 @@ export default function GeneratorPanel({
   isGenerating = false,
   status = "READY",
 }: Props) {
-  const [style, setStyle] = useState<StyleId>("driving");
-  const [tempo, setTempo] = useState(128);
-  const [bars, setBars] = useState(8);
-  const [energy, setEnergy] = useState(0.7);
-  const [valence, setValence] = useState(0.45);
-  const [density, setDensity] = useState(0.65);
-  const [variation, setVariation] = useState(0.35);
-  const [rootPitch, setRootPitch] = useState(9); // A
+  const [urlCfg] = useState(parseConfigFromURL); // seed from a shared link, if present
+  const [style, setStyle] = useState<StyleId>(urlCfg.style ?? "driving");
+  const [tempo, setTempo] = useState(urlCfg.tempo ?? 128);
+  const [bars, setBars] = useState(urlCfg.bars ?? 8);
+  const [energy, setEnergy] = useState(urlCfg.energy ?? 0.7);
+  const [valence, setValence] = useState(urlCfg.valence ?? 0.45);
+  const [density, setDensity] = useState(urlCfg.density ?? 0.65);
+  const [variation, setVariation] = useState(urlCfg.variation ?? 0.35);
+  const [rootPitch, setRootPitch] = useState(urlCfg.rootPitch ?? 9); // A
   const [seedFromAudio, setSeedFromAudio] = useState(false);
-  const [logLines, setLogLines] = useState<string[]>(["[READY] In-house engine warm. Awaiting generation."]);
+  const [shared, setShared] = useState(false);
+  const [logLines, setLogLines] = useState<string[]>([
+    Object.keys(urlCfg).length ? "[LINK] loaded a shared track recipe — press GENERATE" : "[READY] In-house engine warm. Awaiting generation.",
+  ]);
 
   // when a track is analysed, prefill + offer to seed from it
   useEffect(() => {
@@ -134,6 +139,17 @@ export default function GeneratorPanel({
     };
     addLog(`[RUN] ${style.toUpperCase()} · ${NOTES[rootPitch]} · ${bars} bars`);
     onGenerate?.(cfg);
+  }
+
+  function handleShare() {
+    const cfg: GeneratorConfig = { style, bars, tempo, energy, valence, density, variation, rootPitch, seedFromAudio: false };
+    const url = shareURL(cfg);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(() => {
+        setShared(true);
+        setTimeout(() => setShared(false), 1600);
+      }).catch(() => {});
+    }
   }
 
   return (
@@ -242,6 +258,23 @@ export default function GeneratorPanel({
           ■ STOP
         </motion.button>
       </div>
+
+      {/* share */}
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={handleShare}
+        style={{
+          width: "100%", padding: "8px 0", marginBottom: 8,
+          background: shared ? "rgba(184,255,44,0.1)" : "transparent",
+          border: `1px solid rgba(184,255,44,${shared ? 0.4 : 0.18})`,
+          borderRadius: 9, cursor: "pointer", fontFamily: "var(--mono)",
+          fontSize: 8.5, letterSpacing: "0.18em",
+          color: shared ? ACID : "rgba(184,255,44,0.5)", transition: "all 0.2s",
+        }}
+      >
+        {shared ? "✓ LINK COPIED — share your track" : "⧉ SHARE THIS TRACK"}
+      </motion.button>
 
       {/* export row */}
       <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>

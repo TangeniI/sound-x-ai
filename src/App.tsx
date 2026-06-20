@@ -15,7 +15,19 @@ import AudioDropzone from "./components/AudioDropzone";
 import { generativeEngine, featuresFromConfig } from "./lib/generative-engine";
 import { neuralRiff } from "./lib/neural-engine";
 import { toneSynth } from "./lib/tone-synth";
-import type { AudioFeatures, GeneratorConfig, NoteEvent } from "./types";
+import type { AudioFeatures, GeneratorConfig, Instrument, NoteEvent } from "./types";
+
+/** Map a vertical click fraction (0=bottom, 1=top) to a pitch for a lane. */
+function pitchForLane(inst: Instrument, frac: number): number {
+  switch (inst) {
+    case "drums": return frac > 0.66 ? 42 : frac > 0.33 ? 38 : 36; // hat / clap / kick
+    case "bass": return 28 + Math.round(frac * 15);
+    case "stab": return 48 + Math.round(frac * 19);
+    default: return 60 + Math.round(frac * 24); // lead
+  }
+}
+
+const LANE_ORDER: Instrument[] = ["lead", "stab", "bass", "drums"];
 
 export default function App() {
   const [uploaded, setUploaded] = useState<AudioFeatures | null>(null);
@@ -116,6 +128,29 @@ export default function App() {
     }
   };
 
+  // click-to-edit the piano roll: toggle a note at the clicked grid cell
+  const handleEdit = (timeSec: number, laneIndex: number, pitchFrac: number) => {
+    const instrument = LANE_ORDER[laneIndex];
+    const stepSec = 60 / bpmRef.current / 4;
+    const step = Math.max(0, Math.round(timeSec / stepSec));
+    const tStart = step * stepSec;
+    const idx = notes.findIndex(
+      (n) => n.instrument === instrument && Math.abs(n.startTime - tStart) < stepSec * 0.6
+    );
+    let next: NoteEvent[];
+    if (idx >= 0) {
+      next = notes.filter((_, i) => i !== idx);
+    } else {
+      const dur = instrument === "drums" ? stepSec * 0.5 : stepSec * 1.4;
+      next = [
+        ...notes,
+        { pitch: pitchForLane(instrument, pitchFrac), startTime: tStart, endTime: tStart + dur, velocity: 100, instrument },
+      ].sort((a, b) => a.startTime - b.startTime);
+    }
+    setNotes(next);
+    toneSynth.schedule(next);
+  };
+
   // playback ticker → progress + beat-driven character
   useEffect(() => {
     if (!synthPlaying) { clearInterval(timerRef.current); return; }
@@ -173,7 +208,7 @@ export default function App() {
 
           {/* col 2 */}
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            <TrackTimeline sequence={notes} isPlaying={synthPlaying} progressMs={synthProgressMs} durationMs={totalDurationMs} tempo={active?.tempo ?? 128} />
+            <TrackTimeline sequence={notes} isPlaying={synthPlaying} progressMs={synthProgressMs} durationMs={totalDurationMs} tempo={active?.tempo ?? 128} onEdit={handleEdit} />
             <div style={{ display: "flex", justifyContent: "center", paddingTop: 8 }}>
               <CharacterDisplay beatCount={beatCount} isPlaying={synthPlaying} audioFeatures={active} />
             </div>
