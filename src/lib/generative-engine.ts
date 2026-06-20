@@ -188,7 +188,9 @@ export class GenerativeEngine {
 
     onStatus("[ARRANGE] laying drive → full → breakdown → drop…");
     const notes: NoteEvent[] = [];
-    const T = (bar: number, step: number) => (bar * SPB + step) * stepSec;
+    // swing: nudge the odd 16ths late for groove (kept off the on-grid kick steps)
+    const swing = stepSec * (0.1 + cfg.density * 0.14);
+    const T = (bar: number, step: number) => (bar * SPB + step) * stepSec + (step % 2 === 1 ? swing : 0);
 
     for (let bar = 0; bar < bars; bar++) {
       const L = layersAt(bar);
@@ -226,6 +228,14 @@ export class GenerativeEngine {
         if (L.pad && style.pad && s === 0) {
           for (const off of [0, 2, 4]) notes.push({ pitch: degToMidi(off, scale, midRoot), startTime: T(bar, 0), endTime: T(bar, 0) + stepSec * SPB * 0.98, velocity: 40, instrument: "stab" });
         }
+      }
+
+      // ── transition FX (pitch 1 = riser, pitch 2 = impact) ──
+      if (L.fill) {
+        notes.push({ pitch: 1, startTime: bar * SPB * stepSec, endTime: (bar + 1) * SPB * stepSec, velocity: 90, instrument: "fx" });
+      }
+      if (bar % 8 === 0 && bar > 0) {
+        notes.push({ pitch: 2, startTime: bar * SPB * stepSec, endTime: bar * SPB * stepSec + stepSec * 4, velocity: 115, instrument: "fx" });
       }
     }
 

@@ -17,8 +17,8 @@ export interface AudioFeatures {
   source?:      string; // label for where this DNA came from
 }
 
-/** Instrument lanes the engine writes to. */
-export type Instrument = "lead" | "stab" | "bass" | "drums";
+/** Instrument lanes the engine writes to. ("fx" = risers/impacts, not shown on the timeline.) */
+export type Instrument = "lead" | "stab" | "bass" | "drums" | "fx";
 
 /** A single scheduled note. */
 export interface NoteEvent {

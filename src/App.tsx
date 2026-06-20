@@ -91,6 +91,26 @@ export default function App() {
     await toneSynth.downloadMidi(notes, bpmRef.current);
   };
 
+  const handleExportWav = async () => {
+    if (notes.length === 0) return;
+    setGenStatus("[WAV] rendering offline…");
+    try {
+      await toneSynth.downloadWav(notes, bpmRef.current);
+      setGenStatus("[WAV] downloaded ✓");
+    } catch (e) {
+      setGenStatus(`[WAV] ${(e as Error).message}`);
+    }
+  };
+
+  const handleExportStems = async () => {
+    if (notes.length === 0) return;
+    try {
+      await toneSynth.downloadStems(notes, bpmRef.current, setGenStatus);
+    } catch (e) {
+      setGenStatus(`[STEMS] ${(e as Error).message}`);
+    }
+  };
+
   // playback ticker → progress + beat-driven character
   useEffect(() => {
     if (!synthPlaying) { clearInterval(timerRef.current); return; }
@@ -123,7 +143,7 @@ export default function App() {
               Generative Audio Engine
             </h1>
             <p style={{ margin: "6px 0 0", fontSize: 11, fontFamily: "var(--mono)", letterSpacing: "0.12em", color: "rgba(232,255,235,0.3)", maxWidth: 520, lineHeight: 1.6 }}>
-              Synthesises original tracks from a learned model of temporal structure, tension &amp; release — drive it with the controls or drop in a track to clone its DNA.
+              Writes original techno tracks from a learned model of musical structure, not genre samples. Drive it with the controls, or drop in a track to clone its DNA.
             </p>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -142,7 +162,7 @@ export default function App() {
         <div className="main-grid" style={{ display: "grid", gridTemplateColumns: "320px 1fr 220px", gap: 24, alignItems: "start" }}>
           {/* col 1 */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <GeneratorPanel features={uploaded} onGenerate={handleGenerate} onStop={handleStop} onExport={handleExport} isGenerating={isGenerating} status={genStatus} />
+            <GeneratorPanel features={uploaded} onGenerate={handleGenerate} onStop={handleStop} onExport={handleExport} onExportWav={handleExportWav} onExportStems={handleExportStems} hasTrack={notes.length > 0} isGenerating={isGenerating} status={genStatus} />
             <AudioDropzone onAnalysed={handleAnalysed} />
           </div>
 

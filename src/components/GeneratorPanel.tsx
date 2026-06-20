@@ -17,7 +17,10 @@ interface Props {
   features?: AudioFeatures | null;
   onGenerate?: (cfg: GeneratorConfig) => void;
   onStop?: () => void;
-  onExport?: () => void;
+  onExport?: () => void;       // MIDI
+  onExportWav?: () => void;    // rendered WAV
+  onExportStems?: () => void;  // per-instrument WAV stems
+  hasTrack?: boolean;
   isGenerating?: boolean;
   status?: string;
 }
@@ -78,6 +81,9 @@ export default function GeneratorPanel({
   onGenerate,
   onStop,
   onExport,
+  onExportWav,
+  onExportStems,
+  hasTrack = false,
   isGenerating = false,
   status = "READY",
 }: Props) {
@@ -214,7 +220,7 @@ export default function GeneratorPanel({
       </div>
 
       {/* actions */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={handleGenerate} disabled={isGenerating}
           style={{ flex: 1, padding: "10px 0", background: isGenerating ? "rgba(184,255,44,0.06)" : "rgba(184,255,44,0.12)", border: `1px solid ${isGenerating ? "rgba(184,255,44,0.15)" : ACID}`, borderRadius: 10, cursor: isGenerating ? "not-allowed" : "pointer", fontFamily: "var(--mono)", fontSize: 9.5, letterSpacing: "0.28em", color: isGenerating ? "rgba(184,255,44,0.35)" : ACID, transition: "all 0.2s" }}>
           {isGenerating ? "GENERATING…" : "▶ GENERATE"}
@@ -223,10 +229,38 @@ export default function GeneratorPanel({
           style={{ padding: "10px 14px", background: "transparent", border: "1px solid rgba(255,80,80,0.25)", borderRadius: 10, cursor: "pointer", fontFamily: "var(--mono)", fontSize: 9.5, letterSpacing: "0.2em", color: "rgba(255,100,100,0.7)", transition: "all 0.2s" }}>
           ■ STOP
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={onExport}
-          style={{ padding: "10px 14px", background: "transparent", border: "1px solid rgba(184,255,44,0.18)", borderRadius: 10, cursor: "pointer", fontFamily: "var(--mono)", fontSize: 9.5, letterSpacing: "0.2em", color: "rgba(184,255,44,0.45)", transition: "all 0.2s" }}>
-          ↓ MIDI
-        </motion.button>
+      </div>
+
+      {/* export row */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+        {([
+          ["↓ WAV", onExportWav],
+          ["↓ STEMS", onExportStems],
+          ["↓ MIDI", onExport],
+        ] as [string, (() => void) | undefined][]).map(([label, fn]) => (
+          <motion.button
+            key={label}
+            whileHover={hasTrack ? { scale: 1.03 } : undefined}
+            whileTap={hasTrack ? { scale: 0.96 } : undefined}
+            onClick={fn}
+            disabled={!hasTrack}
+            style={{
+              flex: 1,
+              padding: "8px 0",
+              background: "transparent",
+              border: `1px solid rgba(184,255,44,${hasTrack ? 0.25 : 0.08})`,
+              borderRadius: 9,
+              cursor: hasTrack ? "pointer" : "not-allowed",
+              fontFamily: "var(--mono)",
+              fontSize: 8.5,
+              letterSpacing: "0.16em",
+              color: `rgba(184,255,44,${hasTrack ? 0.6 : 0.2})`,
+              transition: "all 0.2s",
+            }}
+          >
+            {label}
+          </motion.button>
+        ))}
       </div>
 
       {/* log */}
