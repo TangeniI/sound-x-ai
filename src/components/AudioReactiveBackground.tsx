@@ -84,6 +84,13 @@ export default function AudioReactiveBackground({
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
 
+    // respect prefers-reduced-motion: skip the animated canvas, keep the
+    // CSS gradient backdrop. (Still calls onBeat so the character can react.)
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
     let W = 0, H = 0;
     let t = 0;
     let columns: CodeColumn[] = [];

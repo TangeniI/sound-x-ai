@@ -161,6 +161,39 @@ export default function GeneratorPanel({
     }
   }
 
+  function handleRandomize() {
+    const styles: StyleId[] = ["driving", "hypnotic", "acid", "melodic"];
+    const rnd = (lo: number, hi: number) => Math.round((lo + Math.random() * (hi - lo)) * 100) / 100;
+    const cfg: GeneratorConfig = {
+      style: styles[Math.floor(Math.random() * styles.length)],
+      bars,
+      tempo: Math.round(rnd(120, 140)),
+      energy: rnd(0.45, 0.95),
+      valence: rnd(0.1, 0.8),
+      density: rnd(0.45, 0.9),
+      variation: rnd(0.2, 0.6),
+      rootPitch: Math.floor(Math.random() * 12),
+      seedFromAudio: false,
+    };
+    setStyle(cfg.style); setTempo(cfg.tempo); setEnergy(cfg.energy);
+    setValence(cfg.valence); setDensity(cfg.density); setVariation(cfg.variation);
+    setRootPitch(cfg.rootPitch);
+    addLog(`[RANDOM] ${cfg.style.toUpperCase()} · ${NOTES[cfg.rootPitch]} · ${cfg.tempo} BPM`);
+    onGenerate?.(cfg);
+  }
+
+  // keyboard: G = generate, R = randomise (ignored while typing in a field)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      if (e.key === "g" || e.key === "G") { e.preventDefault(); if (!isGenerating) handleGenerate(); }
+      if (e.key === "r" || e.key === "R") { e.preventDefault(); if (!isGenerating) handleRandomize(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   return (
     <div className="panel-card" style={panelSx}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
@@ -258,11 +291,15 @@ export default function GeneratorPanel({
 
       {/* actions */}
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={handleGenerate} disabled={isGenerating}
+        <motion.button title="Generate (G)" aria-label="Generate track" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={handleGenerate} disabled={isGenerating}
           style={{ flex: 1, padding: "10px 0", background: isGenerating ? "rgba(184,255,44,0.06)" : "rgba(184,255,44,0.12)", border: `1px solid ${isGenerating ? "rgba(184,255,44,0.15)" : ACID}`, borderRadius: 10, cursor: isGenerating ? "not-allowed" : "pointer", fontFamily: "var(--mono)", fontSize: 9.5, letterSpacing: "0.28em", color: isGenerating ? "rgba(184,255,44,0.35)" : ACID, transition: "all 0.2s" }}>
           {isGenerating ? "GENERATING…" : "▶ GENERATE"}
         </motion.button>
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={onStop}
+        <motion.button title="Randomise (R)" aria-label="Randomise settings and generate" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={handleRandomize} disabled={isGenerating}
+          style={{ padding: "10px 12px", background: "transparent", border: "1px solid rgba(184,255,44,0.25)", borderRadius: 10, cursor: isGenerating ? "not-allowed" : "pointer", fontSize: 13, color: ACID, transition: "all 0.2s" }}>
+          🎲
+        </motion.button>
+        <motion.button title="Stop" aria-label="Stop playback" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={onStop}
           style={{ padding: "10px 14px", background: "transparent", border: "1px solid rgba(255,80,80,0.25)", borderRadius: 10, cursor: "pointer", fontFamily: "var(--mono)", fontSize: 9.5, letterSpacing: "0.2em", color: "rgba(255,100,100,0.7)", transition: "all 0.2s" }}>
           ■ STOP
         </motion.button>

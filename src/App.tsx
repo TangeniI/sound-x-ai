@@ -166,6 +166,18 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [synthPlaying]);
 
+  // keyboard: Space = play / stop (ignored while typing in a field)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      if (e.code === "Space" && notes.length > 0) { e.preventDefault(); handlePlay(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes, synthPlaying]);
+
   const totalDurationMs = notes.length > 0 ? Math.max(...notes.map((n) => n.endTime)) * 1000 : 8000;
 
   return (
@@ -188,7 +200,7 @@ export default function App() {
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             {notes.length > 0 && (
-              <button onClick={handlePlay} style={{ padding: "9px 20px", border: "1px solid rgba(184,255,44,0.4)", borderRadius: 10, background: "rgba(184,255,44,0.08)", color: "#b8ff2c", fontFamily: "var(--mono)", fontSize: 9, letterSpacing: "0.25em", cursor: "pointer" }}>
+              <button onClick={handlePlay} title="Play / Stop (Space)" aria-label="Play or stop the generated track" style={{ padding: "9px 20px", border: "1px solid rgba(184,255,44,0.4)", borderRadius: 10, background: "rgba(184,255,44,0.08)", color: "#b8ff2c", fontFamily: "var(--mono)", fontSize: 9, letterSpacing: "0.25em", cursor: "pointer" }}>
                 {synthPlaying ? "■ STOP" : "▶ PLAY"}
               </button>
             )}
