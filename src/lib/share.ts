@@ -29,10 +29,10 @@ export function shareURL(cfg: GeneratorConfig): string {
   return url.toString();
 }
 
-/** Parse a partial config from the current URL (validated). */
-export function parseConfigFromURL(): Partial<GeneratorConfig> {
-  if (typeof window === "undefined") return {};
-  const p = new URLSearchParams(window.location.search);
+/** Parse a partial config from a query string (defaults to the current URL). */
+export function parseConfigFromURL(search?: string): Partial<GeneratorConfig> {
+  const q = search ?? (typeof window !== "undefined" ? window.location.search : "");
+  const p = new URLSearchParams(q);
   const out: Partial<GeneratorConfig> = {};
 
   const s = p.get("s");
