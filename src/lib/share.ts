@@ -60,3 +60,20 @@ export function parseConfigFromURL(search?: string): Partial<GeneratorConfig> {
   const x = flt("x"); if (x != null) out.variation = x;
   return out;
 }
+
+/* ── persist the last-used config between visits (localStorage) ──────── */
+
+const LS_KEY = "soundxai.config";
+
+export function saveConfig(cfg: Partial<GeneratorConfig>): void {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); } catch { /* ignore */ }
+}
+
+export function loadSavedConfig(): Partial<GeneratorConfig> {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    return raw ? (JSON.parse(raw) as Partial<GeneratorConfig>) : {};
+  } catch {
+    return {};
+  }
+}

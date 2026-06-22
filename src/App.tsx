@@ -198,6 +198,26 @@ export default function App() {
           </div>
         </header>
 
+        {/* first-run onboarding strip */}
+        {notes.length === 0 && !isGenerating && (
+          <div style={{
+            display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center",
+            fontFamily: "var(--mono)", fontSize: 9.5, letterSpacing: "0.12em",
+            color: "rgba(184,255,44,0.45)", padding: "10px 14px",
+            border: "1px solid rgba(184,255,44,0.12)", borderRadius: 10,
+            background: "rgba(184,255,44,0.03)",
+          }}>
+            <span style={{ color: "rgba(184,255,44,0.7)" }}>GET STARTED</span>
+            <span>① pick a STYLE + key</span>
+            <span style={{ opacity: 0.4 }}>→</span>
+            <span>② press ▶ GENERATE</span>
+            <span style={{ opacity: 0.4 }}>→</span>
+            <span>③ ▶ PLAY, click the timeline to edit, export WAV/stems</span>
+            <span style={{ opacity: 0.4 }}>·</span>
+            <span>or drop a track below to clone its DNA</span>
+          </div>
+        )}
+
         {/* main grid */}
         <div className="main-grid" style={{ display: "grid", gridTemplateColumns: "320px 1fr 220px", gap: 24, alignItems: "start" }}>
           {/* col 1 */}

@@ -10,7 +10,7 @@
 import { useState, useEffect, type CSSProperties } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { AudioFeatures, GeneratorConfig, StyleId } from "../types";
-import { shareURL, parseConfigFromURL } from "../lib/share";
+import { shareURL, parseConfigFromURL, saveConfig, loadSavedConfig } from "../lib/share";
 
 export type { GeneratorConfig };
 
@@ -90,15 +90,19 @@ export default function GeneratorPanel({
   isGenerating = false,
   status = "READY",
 }: Props) {
-  const [urlCfg] = useState(parseConfigFromURL); // seed from a shared link, if present
-  const [style, setStyle] = useState<StyleId>(urlCfg.style ?? "driving");
-  const [tempo, setTempo] = useState(urlCfg.tempo ?? 128);
-  const [bars, setBars] = useState(urlCfg.bars ?? 8);
-  const [energy, setEnergy] = useState(urlCfg.energy ?? 0.7);
-  const [valence, setValence] = useState(urlCfg.valence ?? 0.45);
-  const [density, setDensity] = useState(urlCfg.density ?? 0.65);
-  const [variation, setVariation] = useState(urlCfg.variation ?? 0.35);
-  const [rootPitch, setRootPitch] = useState(urlCfg.rootPitch ?? 9); // A
+  // precedence: shared link > last-used (localStorage) > defaults
+  const [urlCfg] = useState(parseConfigFromURL);
+  const [saved] = useState(loadSavedConfig);
+  const pick = <K extends keyof typeof urlCfg>(k: K, dflt: NonNullable<(typeof urlCfg)[K]>) =>
+    (urlCfg[k] ?? saved[k] ?? dflt) as NonNullable<(typeof urlCfg)[K]>;
+  const [style, setStyle] = useState<StyleId>(pick("style", "driving"));
+  const [tempo, setTempo] = useState(pick("tempo", 128));
+  const [bars, setBars] = useState(pick("bars", 8));
+  const [energy, setEnergy] = useState(pick("energy", 0.7));
+  const [valence, setValence] = useState(pick("valence", 0.45));
+  const [density, setDensity] = useState(pick("density", 0.65));
+  const [variation, setVariation] = useState(pick("variation", 0.35));
+  const [rootPitch, setRootPitch] = useState(pick("rootPitch", 9)); // A
   const [seedFromAudio, setSeedFromAudio] = useState(false);
   const [shared, setShared] = useState(false);
   const [logLines, setLogLines] = useState<string[]>([
@@ -120,6 +124,11 @@ export default function GeneratorPanel({
   useEffect(() => {
     if (status !== "READY") addLog(`${status}`);
   }, [status]);
+
+  // remember the last-used settings across visits
+  useEffect(() => {
+    saveConfig({ style, bars, tempo, energy, valence, density, variation, rootPitch });
+  }, [style, bars, tempo, energy, valence, density, variation, rootPitch]);
 
   function addLog(line: string) {
     setLogLines((prev) => [...prev.slice(-6), line]);

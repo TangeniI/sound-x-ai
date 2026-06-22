@@ -1,5 +1,11 @@
 # Sound × AI — Generative Techno Engine
 
+![CI](https://github.com/TangeniI/sound-x-ai/actions/workflows/ci.yml/badge.svg)
+![React](https://img.shields.io/badge/React-19-149eca)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
+![ML](https://img.shields.io/badge/model-GRU%20(from%20scratch)-b8ff2c)
+![backend](https://img.shields.io/badge/backend-none-555)
+
 A generative music studio that synthesises original **techno** tracks from a learned
 model of musical structure — not genre samples. It runs **entirely in the browser**:
 no backend, no API keys, no account.
@@ -9,7 +15,16 @@ it analyses the track in-browser (tempo, key, energy, brightness) and clones its
 "DNA" to seed the generation. Then **edit the piano roll** by clicking, export
 **WAV / stems / MIDI**, or **share a permalink** that encodes the whole recipe.
 
-> **Live demo:** _your Vercel URL_ · works instantly on first click.
+> 🔊 **Live demo:** _add your Vercel URL here_ · works instantly on first click.
+>
+> _(Drop a 15–20s screen recording / GIF of a track generating + playing here — it's the first thing a reviewer looks for.)_
+
+**TL;DR** — I trained a GRU recurrent neural network *from scratch in NumPy*
+(hand-written forward pass, back-prop-through-time and Adam — no PyTorch/TF), then
+re-implemented its forward pass in TypeScript so it runs client-side with **zero ML
+runtime dependency**. It drives the melodic riff of a full techno arrangement that's
+synthesised, visualised, edited and exported entirely in the browser. See
+**[ARCHITECTURE.md](ARCHITECTURE.md)** and the **[model card](ml/MODEL_CARD.md)**.
 
 ---
 
