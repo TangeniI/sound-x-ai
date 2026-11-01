@@ -2,7 +2,7 @@
  * DNARadar.tsx
  *
  * Animated radar / spider chart showing the musical "DNA" of the current track.
- * Axes: Energy · Valence · Danceability · Acousticness · Tempo (normalised)
+ * Axes: Energy · Mood · Density · Space · Tempo (normalised)
  *
  * Design:
  *   - Acid-green filled polygon on dark background
@@ -13,14 +13,7 @@
  */
 
 import { useEffect, useRef } from "react";
-
-export interface AudioFeatures {
-  tempo:        number;
-  energy:       number;
-  valence:      number;
-  danceability: number;
-  acousticness: number;
-}
+import type { AudioFeatures } from "../types";
 
 interface Props {
   audioFeatures?: AudioFeatures | null;
@@ -29,9 +22,9 @@ interface Props {
 
 const AXES = [
   { key: "energy",       label: "ENERGY"   },
-  { key: "valence",      label: "VALENCE"  },
-  { key: "danceability", label: "DANCE"    },
-  { key: "acousticness", label: "ACOUSTIC" },
+  { key: "valence",      label: "MOOD"     },
+  { key: "danceability", label: "DENSITY"  },
+  { key: "acousticness", label: "SPACE"    },
   { key: "tempo",        label: "TEMPO"    },
 ] as const;
 
@@ -66,19 +59,24 @@ export default function DNARadar({ audioFeatures, size = 240 }: Props) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
     const S   = size;
-    canvas.width  = S;
-    canvas.height = S;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    canvas.width  = S * dpr;
+    canvas.height = S * dpr;
+    canvas.style.width  = `${S}px`;
+    canvas.style.height = `${S}px`;
+    ctx.scale(dpr, dpr);
 
     const cx  = S / 2;
     const cy  = S / 2;
-    const R   = S * 0.36;
+    const R   = S * 0.3;
     const N   = AXES.length;
 
     let lastTime = performance.now();
 
     function draw(now: number) {
-      rafRef.current = requestAnimationFrame(draw);
-      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      if (!still) rafRef.current = requestAnimationFrame(draw);
+      const dt = still ? 1 : Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
       scanAngleRef.current += dt * 0.4; // slow scanner rotation
 
@@ -186,7 +184,7 @@ export default function DNARadar({ audioFeatures, size = 240 }: Props) {
       }
 
       // ── axis labels ───────────────────────────────────────────────
-      ctx.font      = '7px "SF Mono", "Fira Code", monospace';
+      ctx.font      = '11px "JetBrains Mono", monospace';
       ctx.textAlign = "center";
 
       AXES.forEach(({ label }, i) => {
@@ -196,12 +194,12 @@ export default function DNARadar({ audioFeatures, size = 240 }: Props) {
         const val   = currentRef.current[i];
 
         // label
-        ctx.fillStyle = "rgba(184,255,44,0.45)";
+        ctx.fillStyle = "#aebdaa";
         ctx.fillText(label, lx, ly - 4);
 
         // value percentage
-        ctx.fillStyle = "rgba(184,255,44,0.70)";
-        ctx.fillText(`${Math.round(val * 100)}`, lx, ly + 6);
+        ctx.fillStyle = "#b8ff2c";
+        ctx.fillText(`${Math.round(val * 100)}`, lx, ly + 9);
       });
 
       // ── centre dot ───────────────────────────────────────────────
@@ -217,19 +215,11 @@ export default function DNARadar({ audioFeatures, size = 240 }: Props) {
   }, [size]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-      <div style={{
-        fontFamily: '"SF Mono", "Fira Code", monospace',
-        fontSize:   9,
-        letterSpacing: "0.28em",
-        color:      "rgba(184,255,44,0.35)",
-      }}>
-        // DNA.RADAR
-      </div>
-      <canvas
-        ref={canvasRef}
-        style={{ display: "block", borderRadius: "50%" }}
-      />
-    </div>
+    <canvas
+      ref={canvasRef}
+      role="img"
+      aria-label="Radar chart of the track's energy, mood, density, space and tempo"
+      style={{ display: "block" }}
+    />
   );
 }

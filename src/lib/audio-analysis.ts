@@ -6,35 +6,43 @@
  *
  * Pipeline:
  *   1. decode file → mono PCM via the Web Audio API
- *   2. RMS loudness            → energy
- *   3. spectral centroid (FFT) → brightness  (→ valence heuristic)
- *   4. onset-flux + tempo grid → tempo (BPM)
- *   5. onset regularity        → danceability
- *   6. high/low spectral ratio → acousticness heuristic
+ *   2. RMS loudness             → energy
+ *   3. spectral centroid (FFT)  → brightness (→ valence heuristic)
+ *   4. onset envelope + comb    → tempo, resolved to a fraction of a BPM
+ *   5. chroma + key profiles    → key and mode (Krumhansl-Schmuckler)
+ *   6. onset regularity         → danceability
+ *   7. high/low spectral ratio  → acousticness heuristic
  *
- * Designed to degrade gracefully — a rough-but-plausible estimate is fine,
- * the point is genuine in-browser signal analysis driving the generator.
+ * The DSP functions take plain sample arrays, so they are tested without a browser.
  */
 
 import type { AudioFeatures } from "../types";
 
 const clamp = (v: number, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, v));
+const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 export type AnalysisStatus = (msg: string) => void;
+
+/** Give the page a frame between heavy stages so the UI keeps moving. */
+const breathe = () => new Promise((r) => setTimeout(r, 0));
 
 export async function analyseAudioFile(
   file: File,
   onStatus: AnalysisStatus = () => {}
 ): Promise<AudioFeatures> {
-  onStatus(`[DECODE] ${file.name} (${(file.size / 1e6).toFixed(1)} MB)…`);
+  onStatus(`Decoding ${file.name} (${(file.size / 1e6).toFixed(1)} MB)`);
 
   const arrayBuf = await file.arrayBuffer();
   const AudioCtx =
     window.AudioContext ||
     (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const ctx = new AudioCtx();
-  const buffer = await ctx.decodeAudioData(arrayBuf);
-  await ctx.close();
+  let buffer: AudioBuffer;
+  try {
+    buffer = await ctx.decodeAudioData(arrayBuf);
+  } finally {
+    void ctx.close();
+  }
 
   // down-mix to mono
   const len = buffer.length;
@@ -45,20 +53,28 @@ export async function analyseAudioFile(
   }
   const sampleRate = buffer.sampleRate;
 
-  onStatus("[RMS] Measuring loudness envelope…");
+  onStatus("Measuring loudness");
+  await breathe();
   const energy = computeEnergy(mono);
 
-  onStatus("[FFT] Spectral centroid + chroma key…");
-  const { brightness, acousticness, chroma } = computeSpectral(mono, sampleRate);
-  const { rootPitch, mode } = estimateKey(chroma);
+  onStatus("Reading the spectrum");
+  await breathe();
+  const { brightness, acousticness } = computeSpectral(mono, sampleRate);
 
-  onStatus("[ONSET] Estimating tempo from onset flux…");
-  const { tempo, danceability } = estimateTempo(mono, sampleRate);
+  onStatus("Finding the key");
+  await breathe();
+  const { rootPitch, mode } = estimateKey(computeChroma(mono, sampleRate));
+
+  onStatus("Finding the tempo");
+  await breathe();
+  // two minutes from the middle is plenty, and keeps long files quick
+  const span = Math.min(mono.length, 120 * sampleRate);
+  const from = Math.floor((mono.length - span) / 2);
+  const { tempo, danceability } = estimateTempo(mono.subarray(from, from + span), sampleRate);
 
   // valence heuristic: brighter + more energetic + faster ≈ happier
   const valence = clamp(brightness * 0.5 + energy * 0.3 + clamp((tempo - 90) / 90) * 0.2);
 
-  const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
   const features: AudioFeatures = {
     tempo: Math.round(tempo),
     energy: clamp(energy),
@@ -71,10 +87,7 @@ export async function analyseAudioFile(
     source: file.name.replace(/\.[^.]+$/, "").slice(0, 22).toUpperCase(),
   };
 
-  onStatus(
-    `[DNA] ${features.tempo} BPM · ${KEYS[rootPitch]} ${mode} · ` +
-      `energy ${Math.round(features.energy * 100)}%`
-  );
+  onStatus(`${features.tempo} BPM, ${KEYS[rootPitch]} ${mode}`);
   return features;
 }
 
@@ -93,7 +106,6 @@ function computeEnergy(mono: Float32Array): number {
 function computeSpectral(mono: Float32Array, sampleRate: number): {
   brightness: number;
   acousticness: number;
-  chroma: number[];
 } {
   const N = 4096;
   const hop = Math.floor(mono.length / 60) || N; // ~60 frames across the track
@@ -102,8 +114,6 @@ function computeSpectral(mono: Float32Array, sampleRate: number): {
   let centroidAcc = 0;
   let highRatioAcc = 0;
   let frames = 0;
-  const chroma = new Array(12).fill(0);
-  const C0 = 16.3516; // Hz, MIDI note 0
 
   const re = new Float32Array(N);
   const im = new Float32Array(N);
@@ -127,11 +137,6 @@ function computeSpectral(mono: Float32Array, sampleRate: number): {
       weighted += mag * freq;
       if (k > cutoffBin) highSum += mag;
       else lowSum += mag;
-      // fold into a pitch class (only the musically useful 60–2000 Hz band)
-      if (freq > 60 && freq < 2000) {
-        const pc = ((Math.round(12 * Math.log2(freq / C0)) % 12) + 12) % 12;
-        chroma[pc] += mag;
-      }
     }
     if (magSum > 0) {
       centroidAcc += weighted / magSum;
@@ -140,66 +145,153 @@ function computeSpectral(mono: Float32Array, sampleRate: number): {
     }
   }
 
-  if (frames === 0) return { brightness: 0.5, acousticness: 0.5, chroma };
+  if (frames === 0) return { brightness: 0.5, acousticness: 0.5 };
   const centroid = centroidAcc / frames;
   const highRatio = highRatioAcc / frames;
   return {
     brightness: clamp((centroid - 500) / 4500),
     acousticness: clamp(1 - highRatio * 1.6),
-    chroma,
   };
 }
 
-/** Estimate musical key from a chroma vector: argmax = root, third = mode. */
-function estimateKey(chroma: number[]): { rootPitch: number; mode: "major" | "minor" } {
-  let root = 0;
-  let max = -Infinity;
-  for (let i = 0; i < 12; i++) if (chroma[i] > max) { max = chroma[i]; root = i; }
-  const minorThird = chroma[(root + 3) % 12];
-  const majorThird = chroma[(root + 4) % 12];
-  return { rootPitch: root, mode: minorThird >= majorThird ? "minor" : "major" };
+/* ──────────────────────────── key finding ────────────────────────── */
+
+// Krumhansl-Kessler probe-tone profiles
+const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+
+/**
+ * Pitch-class energy across the track. A long FFT resolves semitones in the bass,
+ * and only spectral peaks are counted, so noise and hats don't blur the result.
+ */
+export function computeChroma(mono: Float32Array, sampleRate: number): number[] {
+  const N = 16384;
+  const chroma = new Array(12).fill(0);
+  if (mono.length < N) return chroma;
+  const hop = Math.max(N, Math.floor(mono.length / 90));
+  const window = hann(N);
+  const re = new Float32Array(N);
+  const im = new Float32Array(N);
+  const C0 = 16.3516;
+  const lo = Math.ceil((110 * N) / sampleRate);  // above the kick's body
+  const hi = Math.floor((1500 * N) / sampleRate);
+
+  for (let start = 0; start + N <= mono.length; start += hop) {
+    for (let i = 0; i < N; i++) {
+      re[i] = mono[start + i] * window[i];
+      im[i] = 0;
+    }
+    fft(re, im);
+    const mag = new Float32Array(hi + 2);
+    for (let k = lo - 1; k <= hi + 1; k++) mag[k] = Math.hypot(re[k], im[k]);
+    for (let k = lo; k <= hi; k++) {
+      if (mag[k] <= mag[k - 1] || mag[k] < mag[k + 1]) continue;
+      // parabolic interpolation places the peak between bins
+      const d = (mag[k - 1] - mag[k + 1]) / (2 * (mag[k - 1] - 2 * mag[k] + mag[k + 1]) || 1);
+      const hz = ((k + d) * sampleRate) / N;
+      const pc = ((Math.round(12 * Math.log2(hz / C0)) % 12) + 12) % 12;
+      chroma[pc] += mag[k];
+    }
+  }
+  return chroma;
+}
+
+function correlate(a: number[], b: number[]): number {
+  const n = a.length;
+  const ma = a.reduce((x, y) => x + y, 0) / n;
+  const mb = b.reduce((x, y) => x + y, 0) / n;
+  let num = 0, da = 0, db = 0;
+  for (let i = 0; i < n; i++) {
+    num += (a[i] - ma) * (b[i] - mb);
+    da += (a[i] - ma) ** 2;
+    db += (b[i] - mb) ** 2;
+  }
+  return num / (Math.sqrt(da * db) || 1);
+}
+
+/** Best match over all 24 keys. Dance music is mostly minor, so minor gets a small lead. */
+export function estimateKey(chroma: number[]): { rootPitch: number; mode: "major" | "minor" } {
+  let best = -Infinity;
+  let result: { rootPitch: number; mode: "major" | "minor" } = { rootPitch: 0, mode: "minor" };
+  for (let root = 0; root < 12; root++) {
+    const rotated = chroma.map((_, i) => chroma[(i + root) % 12]);
+    const minor = correlate(rotated, MINOR_PROFILE) + 0.03;
+    const major = correlate(rotated, MAJOR_PROFILE);
+    if (minor > best) { best = minor; result = { rootPitch: root, mode: "minor" }; }
+    if (major > best) { best = major; result = { rootPitch: root, mode: "major" }; }
+  }
+  return result;
 }
 
 /* ────────────────────────── tempo estimation ─────────────────────── */
 
-function estimateTempo(mono: Float32Array, sampleRate: number): {
+/** Half-wave rectified energy flux, weighted to the kick's frequency range. */
+function onsetEnvelope(mono: Float32Array, sampleRate: number): { env: Float32Array; rate: number } {
+  const hop = Math.round(sampleRate / 200);
+  const frames = Math.floor(mono.length / hop);
+  const env = new Float32Array(frames);
+  // one-pole low-pass keeps the kick and bass, where the pulse lives
+  const a = 1 - Math.exp((-2 * Math.PI * 180) / sampleRate);
+  let lp = 0, prev = 0;
+  for (let f = 0; f < frames; f++) {
+    let e = 0;
+    for (let i = 0; i < hop; i++) {
+      const x = mono[f * hop + i];
+      lp += a * (x - lp);
+      e += lp * lp + 0.08 * x * x;
+    }
+    const level = Math.log1p(e * 40);
+    env[f] = Math.max(0, level - prev);
+    prev = level;
+  }
+  return { env, rate: sampleRate / hop };
+}
+
+/** Linear interpolation lets the comb land between envelope frames. */
+function sampleAt(env: Float32Array, pos: number): number {
+  const i = Math.floor(pos);
+  if (i + 1 >= env.length) return 0;
+  const t = pos - i;
+  return env[i] * (1 - t) + env[i + 1] * t;
+}
+
+/** How well the envelope lines up with itself every 1, 2, 4 and 8 beats at `bpm`. */
+function combScore(env: Float32Array, rate: number, bpm: number): number {
+  const beat = (60 / bpm) * rate;
+  let score = 0;
+  for (const multiple of [1, 2, 4, 8]) {
+    const lag = beat * multiple;
+    let s = 0;
+    for (let i = 0; i + lag < env.length - 1; i += 2) s += env[i] * sampleAt(env, i + lag);
+    score += s;
+  }
+  return score;
+}
+
+export function estimateTempo(mono: Float32Array, sampleRate: number): {
   tempo: number;
   danceability: number;
 } {
-  // build an onset-strength envelope from frame-to-frame energy increase
-  const frame = 1024;
-  const env: number[] = [];
-  let prev = 0;
-  for (let i = 0; i + frame < mono.length; i += frame) {
-    let e = 0;
-    for (let j = 0; j < frame; j++) e += mono[i + j] * mono[i + j];
-    e = Math.sqrt(e / frame);
-    env.push(Math.max(0, e - prev)); // half-wave rectified flux
-    prev = e;
-  }
-  const envRate = sampleRate / frame; // envelope samples per second
+  const { env, rate } = onsetEnvelope(mono, sampleRate);
+  const mean = env.reduce((a, b) => a + b, 0) / (env.length || 1);
+  for (let i = 0; i < env.length; i++) env[i] -= mean; // otherwise every lag scores well
 
-  // autocorrelation over plausible BPM lags
-  const minBpm = 80;
-  const maxBpm = 175;
-  let bestBpm = 120;
-  let bestScore = -Infinity;
-  for (let bpm = minBpm; bpm <= maxBpm; bpm++) {
-    const lag = Math.round((60 / bpm) * envRate);
-    if (lag < 1 || lag >= env.length) continue;
-    let score = 0;
-    for (let i = 0; i + lag < env.length; i++) score += env[i] * env[i + lag];
-    // mild preference for ~120–130 to avoid octave errors
-    score *= 1 - Math.abs(bpm - 125) / 600;
-    if (score > bestScore) {
-      bestScore = score;
-      bestBpm = bpm;
-    }
+  // coarse sweep, then a fine sweep around the best candidate
+  let bestBpm = 120, bestScore = -Infinity;
+  for (let bpm = 80; bpm <= 180; bpm += 0.5) {
+    const prior = 1 - Math.abs(bpm - 128) / 500; // a mild pull towards dance tempos
+    const score = combScore(env, rate, bpm) * prior;
+    if (score > bestScore) { bestScore = score; bestBpm = bpm; }
+  }
+  for (let bpm = bestBpm - 0.6; bpm <= bestBpm + 0.6; bpm += 0.05) {
+    const score = combScore(env, rate, bpm);
+    if (score > bestScore) { bestScore = score; bestBpm = bpm; }
   }
 
   // danceability: how peaky/regular the onset envelope is
-  const mean = env.reduce((a, b) => a + b, 0) / (env.length || 1);
-  const variance = env.reduce((a, b) => a + (b - mean) ** 2, 0) / (env.length || 1);
+  let variance = 0;
+  for (let i = 0; i < env.length; i++) variance += env[i] * env[i];
+  variance /= env.length || 1;
   const danceability = clamp(Math.sqrt(variance) / (mean + 1e-6) / 4);
 
   return { tempo: bestBpm, danceability };

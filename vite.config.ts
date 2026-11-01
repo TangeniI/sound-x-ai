@@ -7,15 +7,14 @@ export default defineConfig({
   server: { port: 5173 },
 
   optimizeDeps: {
-    include: ["tone", "@tonejs/midi"],
+    include: ["@tonejs/midi"],
   },
 
   build: {
-    target: "esnext",
+    target: "es2020",
     rollupOptions: {
       output: {
         manualChunks: {
-          tone: ["tone"],
           react: ["react", "react-dom"],
           framer: ["framer-motion"],
         },

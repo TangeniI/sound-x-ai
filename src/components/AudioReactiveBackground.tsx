@@ -2,36 +2,21 @@
  * AudioReactiveBackground.tsx
  *
  * Portfolio aesthetic preserved — sparse matrix rain + drifting nodes + fog orbs.
- * Extended for Sound×AI:
- *   - beat flash: white pulse on canvas when a beat fires
- *   - energy modulates node connection distance & column count visibility
- *   - valence shifts orb hue (green → cyan for high valence)
- *   - tempo scales rain speed
+ * Reacts to the actual audio: the master output's low band drives the flash and
+ * floor wash, while energy, mood and tempo shape the scene.
  *
  * Props:
- *   audioFeatures  — current track DNA / analysed features (nullable)
- *   isPlaying      — whether track is currently playing
- *   onBeat         — callback fired on each beat (for CharacterDisplay)
- *   beats          — beat timestamps from audio analysis (seconds)
- *   progressMs     — current playback position in ms
+ *   features — current track DNA
+ *   playing  — whether the track is currently playing
  */
 
 import { useEffect, useRef } from "react";
-
-export interface AudioFeatures {
-  tempo:        number;
-  energy:       number;
-  valence:      number;
-  danceability: number;
-  acousticness: number;
-  beats?:       { start: number; duration: number }[];
-}
+import { player } from "../lib/audio/player";
+import type { AudioFeatures } from "../types";
 
 interface Props {
-  audioFeatures?: AudioFeatures | null;
-  isPlaying?:     boolean;
-  onBeat?:        () => void;
-  progressMs?:    number;
+  features?: AudioFeatures | null;
+  playing?:  boolean;
 }
 
 const CHARS = "01アイウエオカキク{}[]<>/\\;:_.@#|~=+-×÷∑∇λΩ∞█▓░▒".split("");
@@ -57,27 +42,18 @@ interface Node {
   pulseOffset: number;
 }
 
-export default function AudioReactiveBackground({
-  audioFeatures,
-  isPlaying,
-  onBeat,
-  progressMs = 0,
-}: Props) {
+export default function AudioReactiveBackground({ features, playing }: Props) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const rafRef       = useRef<number>(0);
-  const onBeatRef    = useRef(onBeat);
-  const featuresRef  = useRef(audioFeatures);
-  const progressRef  = useRef(progressMs);
-  const isPlayingRef = useRef(isPlaying);
-  const lastBeatRef  = useRef<number>(-1);
+  const featuresRef  = useRef(features);
+  const isPlayingRef = useRef(playing);
+  const lastLowRef   = useRef<number>(0);
   const beatFlashRef = useRef<number>(0); // 0‥1 flash intensity
   const subFlashRef  = useRef<number>(0); // bass-weighted floor pulse
 
   // Keep refs in sync with props without re-running the canvas effect
-  useEffect(() => { onBeatRef.current    = onBeat;       }, [onBeat]);
-  useEffect(() => { featuresRef.current  = audioFeatures; }, [audioFeatures]);
-  useEffect(() => { progressRef.current  = progressMs;   }, [progressMs]);
-  useEffect(() => { isPlayingRef.current = isPlaying;    }, [isPlaying]);
+  useEffect(() => { featuresRef.current  = features; }, [features]);
+  useEffect(() => { isPlayingRef.current = playing;  }, [playing]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -85,7 +61,7 @@ export default function AudioReactiveBackground({
     const ctx = canvas.getContext("2d")!;
 
     // respect prefers-reduced-motion: skip the animated canvas, keep the
-    // CSS gradient backdrop. (Still calls onBeat so the character can react.)
+    // CSS gradient backdrop.
     if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       return;
@@ -107,6 +83,8 @@ export default function AudioReactiveBackground({
     const resize = () => {
       W = canvas.width  = window.innerWidth;
       H = canvas.height = window.innerHeight;
+      canvas.style.width  = `${W}px`;
+      canvas.style.height = `${H}px`;
       initColumns();
       initNodes();
     };
@@ -163,18 +141,14 @@ export default function AudioReactiveBackground({
       const speedMult  = Math.min(2.75, (tempo / 128) * (0.52 + energy * 1.05));
       const connectDist = 108 + energy * 140 + bassHeft * 24;
 
-      // ── Beat detection ────────────────────────────────────────
-      if (isPlayingRef.current && af?.beats && af.beats.length > 0) {
-        const nowSec = progressRef.current / 1000;
-        const idx    = af.beats.findIndex(
-          (b) => b.start > nowSec - 0.05 && b.start <= nowSec + 0.05
-        );
-        if (idx !== -1 && idx !== lastBeatRef.current) {
-          lastBeatRef.current = idx;
-          beatFlashRef.current = 0.55 + bassHeft * 0.45;
-          subFlashRef.current  = 0.28 + bassHeft * 0.62;
-          onBeatRef.current?.();
+      // ── Real low-end hits from the master output ──────────────
+      if (isPlayingRef.current) {
+        const { low } = player.levels();
+        if (low > lastLowRef.current + 0.05) {
+          beatFlashRef.current = Math.max(beatFlashRef.current, 0.3 + low * 0.7);
+          subFlashRef.current  = Math.max(subFlashRef.current, 0.2 + low * 0.7);
         }
+        lastLowRef.current = low;
       }
       beatFlashRef.current = Math.max(0, beatFlashRef.current - dt * (5.2 + tempo / 220));
       subFlashRef.current  = Math.max(0, subFlashRef.current - dt * 3.8);

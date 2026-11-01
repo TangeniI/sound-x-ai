@@ -4,3 +4,5 @@ dist
 .claude
 *.local
 .DS_Store
+ml/data/
+__pycache__/

@@ -8,14 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, useAnimationControls } from "framer-motion";
-
-export interface AudioFeatures {
-  tempo:        number;
-  energy:       number;
-  valence:      number;
-  danceability: number;
-  acousticness: number;
-}
+import type { AudioFeatures } from "../types";
 
 interface Props {
   beatCount?:     number;
@@ -195,7 +188,7 @@ export default function CharacterDisplay({ beatCount = 0, isPlaying, audioFeatur
   }, [breakdown, isPlaying, intro, beatSec, bodyCtrl, floorCtrl]);
 
   const QUIPS: Record<string, string> = {
-    IDLE:   "booting… feed me a track",
+    IDLE:   "press play",
     LOCKED: "locked to the grid",
     KICK:   "ride the kick",
     STEP:   "in the pocket",
@@ -218,18 +211,18 @@ export default function CharacterDisplay({ beatCount = 0, isPlaying, audioFeatur
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
       <div style={{
         fontFamily:    "var(--mono)",
-        fontSize:      11,
+        fontSize:      12,
         fontWeight:    700,
-        letterSpacing: "0.28em",
-        color:         isPlaying ? ACID : "rgba(184,255,44,0.6)",
+        letterSpacing: "0.12em",
+        color:         isPlaying ? ACID : "#dcffc3",
         transition:    "color 0.15s",
       }}>
-        REZ<span style={{ color: "rgba(184,255,44,0.3)" }}>-909</span>
+        REZ-909
         <span style={{
-          fontSize: 7.5,
+          fontSize: 11,
           fontWeight: 400,
-          letterSpacing: "0.2em",
-          color: isPlaying ? "rgba(184,255,44,0.45)" : "rgba(184,255,44,0.25)",
+          letterSpacing: "0.06em",
+          color: "#aebdaa",
           marginLeft: 8,
         }}>
           {label}
@@ -295,13 +288,13 @@ export default function CharacterDisplay({ beatCount = 0, isPlaying, audioFeatur
 
       <div style={{
         fontFamily:    "var(--mono)",
-        fontSize:      8,
-        color:         "rgba(184,255,44,0.22)",
-        letterSpacing: "0.2em",
+        fontSize:      12,
+        color:         "#aebdaa",
+        letterSpacing: "0.04em",
         textAlign:     "center",
         lineHeight:    1.6,
       }}>
-        <span style={{ color: "rgba(184,255,44,0.5)", letterSpacing: "0.15em" }}>
+        <span style={{ color: "#dcffc3" }}>
           “{QUIPS[label] ?? "…"}”
         </span>
         <br />

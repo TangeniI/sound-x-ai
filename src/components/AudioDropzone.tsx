@@ -1,141 +1,73 @@
 /**
  * AudioDropzone.tsx
  *
- * Drag-and-drop (or click) an audio file. It is decoded and analysed
- * entirely in-browser (Web Audio FFT — nothing is uploaded) into an
- * AudioFeatures "DNA" vector that seeds the generator.
+ * Drag-and-drop (or pick) an audio file. It is decoded and analysed entirely in
+ * the browser, nothing is uploaded, and the result fills in the controls.
  */
 
-import { useRef, useState, type CSSProperties } from "react";
-import { motion } from "framer-motion";
+import { useRef, useState } from "react";
 import type { AudioFeatures } from "../types";
-import { analyseAudioFile } from "../lib/audio-analysis";
 
-const ACID = "#b8ff2c";
 const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 interface Props {
-  onAnalysed: (features: AudioFeatures) => void;
+  onFile: (file: File, onStatus: (m: string) => void) => Promise<AudioFeatures>;
 }
 
-export default function AudioDropzone({ onAnalysed }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null);
+export default function AudioDropzone({ onFile }: Props) {
+  const input = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string>("");
+  const [status, setStatus] = useState("");
   const [result, setResult] = useState<AudioFeatures | null>(null);
 
-  async function handleFile(file: File) {
+  async function handle(file: File) {
     if (!file.type.startsWith("audio") && !/\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(file.name)) {
-      setStatus("[ERR] Not an audio file");
+      setStatus("That isn't an audio file");
       return;
     }
     setBusy(true);
     setResult(null);
     try {
-      const features = await analyseAudioFile(file, (m) => setStatus(m));
-      setResult(features);
-      onAnalysed(features);
-    } catch (e) {
-      setStatus(`[ERR] ${(e as Error).message}`);
+      setResult(await onFile(file, setStatus));
+    } catch {
+      setStatus("Couldn't read that file. Try an MP3 or WAV.");
     } finally {
       setBusy(false);
+      if (input.current) input.current.value = ""; // so the same file can be picked again
     }
   }
 
   return (
-    <div className="panel-card" style={panelSx}>
-      <div style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.3em", color: "rgba(184,255,44,0.5)", marginBottom: 12 }}>
-        // ANALYSE.TRACK
-      </div>
-
-      <div
-        onClick={() => inputRef.current?.click()}
+    <section className="panel drop" aria-label="Analyse a track">
+      <div className="panel-head"><h2>Match a track</h2></div>
+      <label
+        className={dragging ? "dropzone over" : "dropzone"}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);
           const f = e.dataTransfer.files[0];
-          if (f) handleFile(f);
-        }}
-        style={{
-          border: `1px dashed ${dragging ? ACID : "rgba(184,255,44,0.25)"}`,
-          borderRadius: 12,
-          padding: "22px 16px",
-          textAlign: "center",
-          cursor: "pointer",
-          background: dragging ? "rgba(184,255,44,0.06)" : "transparent",
-          transition: "all 0.2s",
+          if (f) void handle(f);
         }}
       >
-        <input
-          ref={inputRef}
-          type="file"
-          accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
-          style={{ display: "none" }}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-        />
-        {busy ? (
-          <motion.div
-            animate={{ opacity: [0.4, 1, 0.4] }}
-            transition={{ repeat: Infinity, duration: 1.1 }}
-            style={{ fontFamily: "var(--mono)", fontSize: 10, color: ACID, letterSpacing: "0.1em" }}
-          >
-            ANALYSING…
-          </motion.div>
-        ) : (
-          <>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "rgba(232,255,235,0.7)", marginBottom: 5, letterSpacing: "0.08em" }}>
-              DROP AN AUDIO FILE
-            </div>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 8, color: "rgba(184,255,44,0.3)", letterSpacing: "0.12em" }}>
-              mp3 · wav · m4a · flac — analysed locally, never uploaded
-            </div>
-          </>
-        )}
-      </div>
-
-      {status && (
-        <div style={{ marginTop: 10, fontFamily: '"SF Mono", monospace', fontSize: 8.5, color: "rgba(184,255,44,0.4)", lineHeight: 1.7, minHeight: 14 }}>
-          {status}
-        </div>
-      )}
-
+        <input ref={input} type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handle(f); }} />
+        <strong>{busy ? "Analysing…" : "Drop an audio file"}</strong>
+        <span>Sets tempo, key, energy and mood to match. Stays on your device.</span>
+      </label>
+      {status && <p className="drop-status" role="status">{status}</p>}
       {result && (
         <>
-          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 14px" }}>
-            {([
-              ["SOURCE", result.source ?? "—"],
-              ["KEY", `${KEYS[result.rootPitch ?? 0]} ${result.mode ?? ""}`],
-              ["TEMPO", `${result.tempo} BPM`],
-              ["ENERGY", `${Math.round(result.energy * 100)}%`],
-              ["DANCE", `${Math.round(result.danceability * 100)}%`],
-              ["BRIGHT", `${Math.round((result.brightness ?? 0) * 100)}%`],
-            ] as [string, string][]).map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontFamily: '"SF Mono", monospace', fontSize: 8, color: "rgba(184,255,44,0.3)", letterSpacing: "0.12em" }}>{k}</span>
-                <span style={{ fontFamily: '"SF Mono", monospace', fontSize: 8, color: ACID, letterSpacing: "0.06em" }}>{v}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 10, fontFamily: '"SF Mono", monospace', fontSize: 7.5, color: "rgba(184,255,44,0.3)", lineHeight: 1.6, letterSpacing: "0.05em" }}>
-            ↑ seeds tempo, key &amp; energy — generates an original track in that DNA, not a remix. Hit GENERATE.
-          </div>
+          <dl className="drop-result">
+            <div><dt>Key</dt><dd>{KEYS[result.rootPitch ?? 0]} {result.mode}</dd></div>
+            <div><dt>Tempo</dt><dd>{result.tempo} BPM</dd></div>
+            <div><dt>Energy</dt><dd>{Math.round(result.energy * 100)}%</dd></div>
+            <div><dt>Bright</dt><dd>{Math.round((result.brightness ?? 0) * 100)}%</dd></div>
+          </dl>
+          <p className="drop-status">The key is an estimate. Change it above if it clashes.</p>
         </>
       )}
-    </div>
+    </section>
   );
 }
-
-const panelSx: CSSProperties = {
-  padding: "16px 18px",
-  borderRadius: 16,
-  border: "1px solid rgba(184,255,44,0.10)",
-  background: "rgba(4,8,4,0.78)",
-  backdropFilter: "blur(20px)",
-  WebkitBackdropFilter: "blur(20px)",
-  boxShadow: "0 24px 80px rgba(0,0,0,0.55)",
-  width: 320,
-  boxSizing: "border-box",
-};
