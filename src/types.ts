@@ -3,6 +3,8 @@
  * Single source of truth for shared types across components + lib.
  */
 
+import type { Kit } from "./lib/audio/kits";
+
 /** Normalised audio "DNA" — from the controls or from analysing a track. */
 export interface AudioFeatures {
   tempo:        number; // BPM
@@ -19,6 +21,8 @@ export interface AudioFeatures {
 /** Mixer lanes. "fx" events (risers, impacts) sit outside the mixer. */
 export type Lane = "drums" | "perc" | "bass" | "stab" | "lead" | "pad";
 export type Instrument = Lane | "fx";
+/** Mixer channels: the lanes, the rumble under the kick, and effects. */
+export type ChannelId = Lane | "rumble" | "fx";
 export const LANES: Lane[] = ["lead", "pad", "stab", "bass", "perc", "drums"];
 
 /** A single scheduled note. */
@@ -32,15 +36,22 @@ export interface NoteEvent {
   chord?:     number[]; // semitone offsets of a chord this note stands for
   accent?:    boolean; // acid: louder, brighter
   slide?:     boolean; // acid: glide in from the previous note
+  variant?:   number;  // which recording or rhythm variant this note uses
 }
 
 /** Styles — each picks its own patterns and its own recorded kit. */
-export type StyleId = "driving" | "hypnotic" | "acid" | "melodic" | "dub" | "warehouse";
+export type StyleId = "driving" | "hypnotic" | "acid" | "tribal" | "dub" | "warehouse";
+
+/** The twelve Groove families. Each is built around one idea. */
+export type FamilyId =
+  | "backbone" | "floor" | "steel" | "night" | "hands" | "wire"
+  | "concrete" | "signal" | "undertow" | "exhaust" | "clockwork" | "splinter";
 
 export type ModeChoice = "auto" | "minor" | "major";
 
 export interface GeneratorConfig {
   style:      StyleId;
+  family?:    FamilyId; // Groove only; without one the seed decides
   bars:       number;  // arrangement length
   tempo:      number;  // BPM
   energy:     number;  // 0–1  intensity: layers, velocity, drive, rumble
@@ -52,6 +63,7 @@ export interface GeneratorConfig {
   seed:       number;  // the take: same seed + same controls = same track
   laneSeeds:  Partial<Record<Lane, number>>; // re-rolled single lanes
   pins:       Record<number, number>; // riff step → vocab token held by the user
+  levels?:    Partial<Record<ChannelId, number>>; // fader positions in dB, 0 if not set
 }
 
 /** One piano-roll edit, kept apart from the notes so it survives regeneration. */
@@ -60,6 +72,7 @@ export interface NoteEdit {
   lane:  Lane;
   step:  number;
   pitch: number;
+  root?: number; // the key it was made in, so it follows a key change
 }
 
 export type SectionKind = "intro" | "groove" | "riff" | "break" | "build" | "drop" | "outro";
@@ -73,7 +86,8 @@ export interface Section {
 /** A mix move in the arrangement: filter sweeps, reverb swells, echo throws. */
 export interface Automation {
   time:  number;
-  param: "cutoff" | "space" | "echo" | "acid";
+  param: "cutoff" | "space" | "echo" | "acid" | "low"; // low: the rumble gate, shut before a hit
+  from:  number; // where the move starts, so it never depends on playback history
   value: number;
   ramp:  number; // seconds
 }
@@ -111,5 +125,8 @@ export interface Track {
   tonality:   "minor" | "major";
   scale:      readonly number[];
   mix:        MixParams;
+  kit:        Kit; // the recordings this take plays
+  endKit?:    { from: number; kit: Kit }; // Groove: the sounds it changes to from this step
+  family?:    { id: FamilyId; name: string; about: string };
   riff:       RiffInfo;
 }

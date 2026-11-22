@@ -1,6 +1,6 @@
 # Sample credits
 
-Every sound in this folder comes from a real recording. Nothing is synthesised.
+Every file in this folder is a sample from the sources below. None was generated for this project.
 `scripts/build_samples.py` trims, fades and normalises the originals.
 
 | Files | Source | Licence |

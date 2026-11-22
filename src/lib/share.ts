@@ -7,13 +7,23 @@
  * track rather than a similar one.
  */
 
-import type { GeneratorConfig, Lane, ModeChoice, NoteEdit, StyleId } from "../types";
+import type { ChannelId, GeneratorConfig, Lane, ModeChoice, NoteEdit, StyleId } from "../types";
 import { LANES } from "../types";
+import { familyById } from "./groove/families";
 
-const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "melodic", "dub", "warehouse"];
+const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "tribal", "dub", "warehouse"];
+const RENAMED: Record<string, StyleId> = { melodic: "tribal" }; // links made before the dark groove rebuild
+const MAX_EDITS = 1000;
+const MAX_STEP = 176 * 16;
+const RIFF_STEPS = 32;
+const MAX_TOKEN = 63;
 const MODES: ModeChoice[] = ["auto", "minor", "major"];
 const LANE_CODES: Record<Lane, string> = { lead: "l", pad: "p", stab: "s", bass: "b", perc: "c", drums: "d" };
 const CODE_LANES = Object.fromEntries(Object.entries(LANE_CODES).map(([k, v]) => [v, k])) as Record<string, Lane>;
+const CHANNEL_CODES: Record<ChannelId, string> = { ...LANE_CODES, rumble: "r", fx: "x" };
+const CODE_CHANNELS = Object.fromEntries(Object.entries(CHANNEL_CODES).map(([k, v]) => [v, k])) as Record<string, ChannelId>;
+/** How far a fader goes, in dB. */
+export const LEVEL_RANGE = [-24, 6] as const;
 
 export function encodeConfig(cfg: GeneratorConfig, edits: NoteEdit[] = []): string {
   const p = new URLSearchParams();
@@ -26,25 +36,30 @@ export function encodeConfig(cfg: GeneratorConfig, edits: NoteEdit[] = []): stri
   p.set("x", cfg.variation.toFixed(2));
   p.set("k", String(cfg.rootPitch));
   p.set("r", String(cfg.seed));
+  if (cfg.family) p.set("f", cfg.family);
   if (cfg.mode !== "auto") p.set("m", cfg.mode);
   const lanes = LANES.filter((l) => cfg.laneSeeds[l]).map((l) => `${LANE_CODES[l]}${cfg.laneSeeds[l]}`);
   if (lanes.length) p.set("l", lanes.join("."));
   const pins = Object.entries(cfg.pins).map(([step, tok]) => `${step}:${tok}`);
   if (pins.length) p.set("p", pins.join("."));
+  const levels = Object.entries(cfg.levels ?? {}).filter(([, db]) => db).map(([id, db]) => `${CHANNEL_CODES[id as ChannelId]}${Number(db!.toFixed(1))}`);
+  if (levels.length) p.set("g", levels.join("_"));
   if (edits.length) p.set("n", edits.map(encodeEdit).join("."));
   return p.toString();
 }
 
 function encodeEdit(e: NoteEdit): string {
-  return `${e.op === "add" ? "a" : "r"}${LANE_CODES[e.lane]}${e.step}:${e.pitch}`;
+  return `${e.op === "add" ? "a" : "r"}${LANE_CODES[e.lane]}${e.step}:${e.pitch}${e.root == null ? "" : `_${e.root}`}`;
 }
 
 function decodeEdit(text: string): NoteEdit | null {
-  const m = /^([ar])([lpsbcd])(\d+):(\d+)$/.exec(text);
+  const m = /^([ar])([lpsbcd])(\d+):(\d+)(?:_(\d+))?$/.exec(text);
   if (!m) return null;
   const pitch = Number(m[4]);
-  if (pitch > 127) return null;
-  return { op: m[1] === "a" ? "add" : "remove", lane: CODE_LANES[m[2]], step: Number(m[3]), pitch };
+  if (pitch > 127 || Number(m[3]) >= MAX_STEP) return null;
+  const edit: NoteEdit = { op: m[1] === "a" ? "add" : "remove", lane: CODE_LANES[m[2]], step: Number(m[3]), pitch };
+  if (m[5] != null && Number(m[5]) < 12) edit.root = Number(m[5]);
+  return edit;
 }
 
 export function shareURL(cfg: GeneratorConfig, edits: NoteEdit[] = []): string {
@@ -60,8 +75,10 @@ export function parseConfigFromURL(search?: string): { config: Partial<Generator
   const p = new URLSearchParams(q);
   const out: Partial<GeneratorConfig> = {};
 
-  const s = p.get("s");
-  if (s && STYLES.includes(s as StyleId)) out.style = s as StyleId;
+  const s = styleOf(p.get("s"));
+  if (s) out.style = s;
+  const family = familyById(p.get("f"));
+  if (family) out.family = family.id;
   const m = p.get("m");
   if (m && MODES.includes(m as ModeChoice)) out.mode = m as ModeChoice;
 
@@ -78,7 +95,7 @@ export function parseConfigFromURL(search?: string): { config: Partial<Generator
     return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : undefined;
   };
 
-  const b = int("b", 16, 128); if (b != null) out.bars = b;
+  const b = int("b", 16, 176); if (b != null) out.bars = b;
   const t = int("t", 90, 175); if (t != null) out.tempo = t;
   const k = int("k", 0, 11); if (k != null) out.rootPitch = k;
   const r = int("r", 1, 0x7fffffff); if (r != null) out.seed = r;
@@ -93,7 +110,7 @@ export function parseConfigFromURL(search?: string): { config: Partial<Generator
     for (const item of lanes.split(".")) {
       const lane = CODE_LANES[item[0]];
       const n = parseInt(item.slice(1), 10);
-      if (lane && Number.isFinite(n)) seeds[lane] = n;
+      if (lane && Number.isSafeInteger(n) && n >= 0) seeds[lane] = n;
     }
     out.laneSeeds = seeds;
   }
@@ -102,28 +119,62 @@ export function parseConfigFromURL(search?: string): { config: Partial<Generator
     const held: Record<number, number> = {};
     for (const item of pins.split(".")) {
       const [step, tok] = item.split(":").map(Number);
-      if (Number.isInteger(step) && Number.isInteger(tok) && step >= 0 && step < 32) held[step] = tok;
+      if (Number.isInteger(step) && Number.isInteger(tok) && step >= 0 && step < RIFF_STEPS && tok >= 0 && tok <= MAX_TOKEN) held[step] = tok;
     }
     out.pins = held;
   }
 
+  const levels = p.get("g");
+  if (levels) {
+    const set: Partial<Record<ChannelId, number>> = {};
+    for (const item of levels.split("_")) {
+      const id = CODE_CHANNELS[item[0]];
+      const db = parseFloat(item.slice(1));
+      if (id && Number.isFinite(db)) set[id] = Math.max(LEVEL_RANGE[0], Math.min(LEVEL_RANGE[1], Math.round(db * 10) / 10));
+    }
+    out.levels = set;
+  }
+
   const notes = p.get("n");
-  const edits = notes ? notes.split(".").map(decodeEdit).filter((e): e is NoteEdit => e !== null) : [];
+  const edits = notes ? notes.split(".", MAX_EDITS).map(decodeEdit).filter((e): e is NoteEdit => e !== null) : [];
   return { config: out, edits };
 }
 
 /* ── persist the last-used config between visits (localStorage) ──────── */
 
-const LS_KEY = "soundxai.config.v2";
+const LS_KEY = "soundxai.config.v3";
 
-export function saveConfig(cfg: Partial<GeneratorConfig>): void {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); } catch { /* ignore */ }
+function styleOf(value: unknown): StyleId | undefined {
+  if (typeof value !== "string") return undefined;
+  if (Object.hasOwn(RENAMED, value)) return RENAMED[value];
+  return STYLES.includes(value as StyleId) ? (value as StyleId) : undefined;
 }
 
+/** Saved settings are outside input too: keep only fields with usable values. */
+export function cleanControls(raw: unknown): Partial<GeneratorConfig> {
+  if (!raw || typeof raw !== "object") return {};
+  const r = raw as Record<string, unknown>;
+  const out: Partial<GeneratorConfig> = {};
+  const style = styleOf(r.style);
+  if (style) out.style = style;
+  if (MODES.includes(r.mode as ModeChoice)) out.mode = r.mode as ModeChoice;
+  const num = (key: "bars" | "tempo" | "rootPitch" | "energy" | "valence" | "density" | "variation", lo: number, hi: number, whole = false) => {
+    const v = r[key];
+    if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi) return;
+    out[key] = whole ? Math.round(v) : v;
+  };
+  num("bars", 16, 176, true);
+  num("tempo", 90, 175, true);
+  num("rootPitch", 0, 11, true);
+  for (const key of ["energy", "valence", "density", "variation"] as const) num(key, 0, 1);
+  return out;
+}
+
+/** Settings saved by versions from before sessions were kept whole. */
 export function loadSavedConfig(): Partial<GeneratorConfig> {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    return raw ? (JSON.parse(raw) as Partial<GeneratorConfig>) : {};
+    return raw ? cleanControls(JSON.parse(raw)) : {};
   } catch {
     return {};
   }

@@ -2,41 +2,87 @@
  * lib/audio/render.ts
  *
  * Offline bounce through the same graph and voices as live playback, so the
- * exported file is the mix you heard. Stems keep the sidechain pump, because the
- * kick still runs through the graph; only its channel strip is muted.
+ * exported file is the mix you heard, muted parts included. The processing's
+ * own delay is measured and trimmed, so bar 1 is the first sample. Stems keep the sidechain pump, because the
+ * kick still runs through the graph; only its channel strip is muted. They skip
+ * the master processing, so together they rebuild the unmastered mix.
+ *
+ * A loop is rendered twice in a row and the second pass kept, so what rings over
+ * from its end is already at its start, as it will be when it repeats in a DAW.
  */
 
 import type { NoteEvent, Track } from "../../types";
+import { sliceTrack, stemsFor, stemTrack } from "./slice";
+import { makeZip, type ZipEntry } from "../zip";
 import { applyMix, buildGraph, CHANNELS, setChannel, type ChannelId } from "./graph";
-import { allSamplesFor } from "./kits";
+import { trackSamples } from "./kits";
 import { sampleBank } from "./samples";
 import { automate, makeRuntime, startAtmosphere, trigger } from "./voices";
 
 const TAIL_SEC = 3;
 const CHUNK_SEC = 1;
 
-export const STEM_GROUPS: Record<string, ChannelId[]> = {
-  drums: ["drums", "perc"],
-  rumble: ["rumble"],
-  bass: ["bass"],
-  chords: ["stab", "pad"],
-  lead: ["lead"],
-  fx: ["fx"],
-};
+export interface RenderOptions {
+  /** A stem: just these channels, without the master processing. */
+  only?:       ChannelId[];
+  /** What mute and solo leave playing. Everything, if not given. */
+  audible?:    ReadonlySet<ChannelId>;
+  /** Fader levels in dB. The track's own, if not given. */
+  levels?:     Partial<Record<ChannelId, number>>;
+  /** Sample rate of the result. The graph runs at the rate its recordings were decoded at. */
+  rate?:       number;
+  /** Leave off the ring-out after the last bar. */
+  noTail?:     boolean;
+  onProgress?: (done: number) => void;
+}
 
-/** Render a track to a buffer. `only` keeps those channels; the rest stay silent. */
-export async function renderTrack(track: Track, sampleRate: number, only?: ChannelId[]): Promise<AudioBuffer> {
-  const length = Math.ceil((track.durationSec + TAIL_SEC) * sampleRate);
+/** Room ahead of bar 1, because a note can't be scheduled before time zero. */
+const LEAD_IN = 0.02;
+const latencies = new Map<string, Promise<number>>();
+
+/** How many samples late the kick's path comes out, measured with a click. */
+function latencyOf(sampleRate: number, master: boolean): Promise<number> {
+  const key = `${sampleRate}:${master}`;
+  let found = latencies.get(key);
+  if (found) return found;
+  found = (async () => {
+    const ctx = new OfflineAudioContext(2, Math.ceil(sampleRate * 0.25), sampleRate);
+    await sampleBank.ensure(ctx, ["ir_hall", "ir_room"]);
+    const graph = buildGraph(ctx, sampleBank, { master });
+    const click = ctx.createBuffer(1, 64, sampleRate);
+    click.getChannelData(0)[0] = 1;
+    const src = ctx.createBufferSource();
+    src.buffer = click;
+    src.connect(graph.kickIn);
+    const at = Math.round(LEAD_IN * sampleRate);
+    src.start(at / sampleRate);
+    const data = (await ctx.startRendering()).getChannelData(0);
+    let peak = at;
+    for (let i = at; i < data.length; i++) if (Math.abs(data[i]) > Math.abs(data[peak])) peak = i;
+    return peak - at;
+  })();
+  latencies.set(key, found);
+  found.catch(() => latencies.delete(key));
+  return found;
+}
+
+/** Render a track to a buffer that starts on bar 1. */
+export async function renderTrack(track: Track, sampleRate: number, options: RenderOptions = {}): Promise<AudioBuffer> {
+  const { only, audible, onProgress = () => {}, levels = track.config.levels ?? {}, rate, noTail } = options;
+  const trim = Math.round(LEAD_IN * sampleRate) + await latencyOf(sampleRate, !only);
+  const wanted = Math.ceil((track.durationSec + (noTail ? 0 : TAIL_SEC)) * sampleRate);
+  const length = wanted + trim;
   const ctx = new OfflineAudioContext(2, length, sampleRate);
-  await sampleBank.ensure(ctx, allSamplesFor(track.config.style, track.tonality));
+  await sampleBank.ensure(ctx, trackSamples(track));
+  const plays = (id: ChannelId) => (!only || only.includes(id)) && (!audible || audible.has(id));
 
-  const graph = buildGraph(ctx, sampleBank);
+  const graph = buildGraph(ctx, sampleBank, { master: !only });
   applyMix(graph, track.mix, track.stepSec * 4, 0);
-  if (only) for (const id of CHANNELS) setChannel(graph, id, only.includes(id));
-  else startAtmosphere(makeRuntime(ctx, graph, sampleBank, track), 0, track.durationSec);
+  for (const id of CHANNELS) setChannel(graph, id, plays(id), undefined, levels[id] ?? 0);
+  if (plays("fx")) startAtmosphere(makeRuntime(ctx, graph, sampleBank, track), 0, track.durationSec);
 
   const rt = makeRuntime(ctx, graph, sampleBank, track);
-  const start = 0.02;
+  const start = Math.round(LEAD_IN * sampleRate) / sampleRate;
   const events = [
     ...track.notes.map((note) => ({ time: note.startTime, note, auto: undefined })),
     ...track.automation.map((auto) => ({ time: auto.time, note: undefined, auto })),
@@ -58,6 +104,7 @@ export async function renderTrack(track: Track, sampleRate: number, only?: Chann
     queueUntil(CHUNK_SEC);
     for (let t = CHUNK_SEC; t < end - 0.1; t += CHUNK_SEC) {
       void ctx.suspend(t).then(() => {
+        onProgress(t / end);
         queueUntil(t + CHUNK_SEC);
         return ctx.resume();
       });
@@ -65,15 +112,62 @@ export async function renderTrack(track: Track, sampleRate: number, only?: Chann
   } else {
     queueUntil(Infinity);
   }
+  const full = await ctx.startRendering();
+  const out = new AudioBuffer({ numberOfChannels: 2, length: wanted, sampleRate });
+  for (let c = 0; c < 2; c++) out.copyToChannel(full.getChannelData(c).subarray(trim, trim + wanted), c);
+  return rate && rate !== sampleRate ? resample(out, rate) : out;
+}
+
+/** The browser's own resampler, for a 44.1 kHz file from a 48 kHz graph. */
+async function resample(buffer: AudioBuffer, rate: number): Promise<AudioBuffer> {
+  const ctx = new OfflineAudioContext(buffer.numberOfChannels, Math.round(buffer.duration * rate), rate);
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.connect(ctx.destination);
+  src.start();
   return ctx.startRendering();
 }
 
-/** Encode a buffer as 16-bit PCM WAV. */
-export function encodeWav(buffer: AudioBuffer): Blob {
+/** Bars of a track as a seamless loop, exactly that long. */
+export async function renderLoop(track: Track, startBar: number, bars: number, sampleRate: number, options: RenderOptions = {}): Promise<AudioBuffer> {
+  const twice = sliceTrack(track, startBar, bars, 2);
+  const audio = await renderTrack(twice, sampleRate, { ...options, noTail: true });
+  const len = bars * track.stepSec * 16;
+  const from = Math.round(len * audio.sampleRate);
+  const frames = Math.round(2 * len * audio.sampleRate) - from;
+  const out = new AudioBuffer({ numberOfChannels: 2, length: frames, sampleRate: audio.sampleRate });
+  for (let c = 0; c < 2; c++) out.copyToChannel(audio.getChannelData(c).subarray(from, from + frames), c);
+  return out;
+}
+
+export interface Range { startBar: number; bars: number }
+
+/**
+ * Every stem as a WAV in one zip, all the same length. Each is rendered on its
+ * own, so the progress counts stems as well as time.
+ */
+export async function stemsZip(
+  track: Track, sampleRate: number, audible: ReadonlySet<ChannelId>, name: string,
+  { range, bits = 24, rate, levels, onProgress = () => {} }: { range?: Range; bits?: 16 | 24; rate?: number; levels?: RenderOptions["levels"]; onProgress?: (p: number, stem: string) => void },
+): Promise<Blob> {
+  const stems = stemsFor(track, audible);
+  const files: ZipEntry[] = [];
+  for (const [i, stem] of stems.entries()) {
+    const part = stemTrack(track, stem);
+    const options: RenderOptions = { only: stem.only, audible, levels, rate, onProgress: (p) => onProgress((i + p) / stems.length, stem.name) };
+    const audio = range ? await renderLoop(part, range.startBar, range.bars, sampleRate, options) : await renderTrack(part, sampleRate, options);
+    files.push({ name: `${name}/${String(i + 1).padStart(2, "0")}-${stem.name}.wav`, data: new Uint8Array(await encodeWav(audio, bits).arrayBuffer()) });
+  }
+  return makeZip(files);
+}
+
+/** Encode a buffer as PCM WAV: 24-bit, or 16-bit with triangular dither. */
+export function encodeWav(buffer: AudioBuffer, bits: 16 | 24 = 24): Blob {
   const channels = buffer.numberOfChannels;
   const rate = buffer.sampleRate;
   const frames = buffer.length;
-  const align = channels * 2;
+  const bytes = bits / 8;
+  const align = channels * bytes;
   const size = frames * align;
   const ab = new ArrayBuffer(44 + size);
   const view = new DataView(ab);
@@ -83,16 +177,26 @@ export function encodeWav(buffer: AudioBuffer): Blob {
   text(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
   view.setUint16(22, channels, true); view.setUint32(24, rate, true);
   view.setUint32(28, rate * align, true); view.setUint16(32, align, true);
-  view.setUint16(34, 16, true); text(36, "data"); view.setUint32(40, size, true);
+  view.setUint16(34, bits, true); text(36, "data"); view.setUint32(40, size, true);
 
   const data: Float32Array[] = [];
   for (let c = 0; c < channels; c++) data.push(buffer.getChannelData(c));
   let at = 44;
   for (let i = 0; i < frames; i++) {
     for (let c = 0; c < channels; c++) {
-      const s = Math.max(-1, Math.min(1, data[c][i]));
-      view.setInt16(at, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-      at += 2;
+      const x = data[c][i];
+      if (bits === 24) {
+        // far below anything audible, so 24-bit needs no dither
+        const v = Math.max(-0x800000, Math.min(0x7fffff, Math.round(x * 0x7fffff)));
+        view.setUint8(at, v & 0xff);
+        view.setUint8(at + 1, (v >> 8) & 0xff);
+        view.setUint8(at + 2, (v >> 16) & 0xff);
+      } else {
+        // one LSB of noise turns rounding distortion on fades into steady hiss
+        const dither = x === 0 ? 0 : Math.random() - Math.random();
+        view.setInt16(at, Math.max(-0x8000, Math.min(0x7fff, Math.round(x * 0x7fff + dither))), true);
+      }
+      at += bytes;
     }
   }
   return new Blob([view], { type: "audio/wav" });
@@ -107,8 +211,8 @@ export function download(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** The arrangement as MIDI. Chord samples are written out as real chords. */
-export async function encodeMidi(track: Track): Promise<Blob> {
+/** The arrangement as MIDI. Stabs are written out note by note. */
+export async function encodeMidi(track: Track, audible?: ReadonlySet<ChannelId>): Promise<Blob> {
   const { Midi } = await import("@tonejs/midi");
   const midi = new Midi();
   midi.header.setTempo(track.bpm);
@@ -129,7 +233,7 @@ export async function encodeMidi(track: Track): Promise<Blob> {
     velocity: n.velocity / 127,
   });
   for (const n of track.notes) {
-    if (n.instrument === "fx") continue;
+    if (n.instrument === "fx" || (audible && !audible.has(n.instrument))) continue;
     for (const off of n.chord ?? [0]) add(n, n.pitch + off);
   }
   return new Blob([new Uint8Array(midi.toArray())], { type: "audio/midi" });

@@ -105,7 +105,9 @@ export class NeuralRiff {
       h = r.h;
       const probs = softmax(r.logits, temp, bos);
       const drawn = draw(probs, rng); // always drawn, so a pin leaves later steps comparable
-      tok = pins[s] ?? drawn;
+      const held = pins[s];
+      // a pin can come from a hand-edited link, so it has to be a real note
+      tok = Number.isInteger(held) && held >= 0 && held < vocab.length && held !== bos ? held : drawn;
       out.tokens.push(tok);
       out.degrees.push(vocab[tok]);
       out.probs.push(probs);

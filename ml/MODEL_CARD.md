@@ -28,22 +28,25 @@ Lower is better. All scores are next-token negative log-likelihood in nats, on
 | Uniform guess | 3.178 |
 | Unigram | 1.765 |
 | Bigram | 1.699 |
-| Trigram (best baseline) | 1.547 |
-| 4-gram | 1.557 |
-| **GRU** | **1.243** (95% interval 1.223 to 1.266) |
+| Trigram | 1.547 |
+| 4-gram (baseline) | 1.557 |
+| **GRU** | **1.243** (95% interval 1.218 to 1.266) |
 
-The GRU beats the best n-gram by 20%. N-gram smoothing was chosen on the validation
-set, the same way the GRU was stopped. Scores are in [`results.json`](results.json).
+The GRU beats the baseline by 20%. Everything was chosen on the validation set: the GRU's
+stopping epoch, each n-gram's smoothing, and which n-gram counts as the baseline. The 4-gram
+wins on validation (1.322 against 1.350 for the trigram), even though the trigram is slightly
+lower on test. Scores are in [`results.json`](results.json).
 
-The interval comes from resampling test riffs. With only 10 test artists, it understates
+The interval comes from resampling test riffs 1,000 times. With only 10 test artists, it understates
 how much the score would move on a different set of artists.
 
 ### Why this matters
 
-An earlier version trained on 20 hand-written motifs reached a training loss of about 0.6.
-Tested on held-out motifs, it scored 3.3 to 4.6 nats, worse than random guessing: it had
-memorised its data. That result is why the model was retrained on real MIDI with a proper
-split, early stopping and a baseline.
+An earlier version (commit `14c88ae`) trained for 400 epochs on exactly 20 hand-written
+motifs, each transposed five times, and reached a training loss of about 0.6. It had no
+held-out data, so nothing could tell learning apart from memorising, and with 20 motifs
+memorising is the likely answer. That is why the model was retrained on real MIDI with a
+split by artist, early stopping and a baseline.
 
 ## Data
 
@@ -114,3 +117,9 @@ Training takes about 90 seconds on a laptop CPU.
 - **It models one line.** Bass (outside ACID), drums and harmony remain rule-based.
 - **A better score doesn't guarantee a better riff.** NLL measures prediction of real data,
   not whether a person prefers the output.
+
+## How the app uses it
+
+Groove doesn't use the model. In the other five styles the app plays its output as a sequence line, with each style keeping some or all of
+the notes, and as the bassline in the Acid style. It does not write drums, percussion,
+chords or the arrangement. The corpus is not dark groove, so it isn't asked to imitate it.

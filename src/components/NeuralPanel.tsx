@@ -16,11 +16,12 @@ const H = 188;
 const REST_H = 16;
 
 export default function NeuralPanel({ studio }: { studio: Studio }) {
-  const { track, config, pinRiff } = studio;
+  const { track, config, pinRiff, playing } = studio;
   const canvas = useRef<HTMLCanvasElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(560);
   const riff = track?.riff;
+  const inGroove = !!track?.family;
 
   // rows run high to low; REST sits apart at the bottom, BOS is never shown
   const rows = useMemo(() => {
@@ -35,10 +36,12 @@ export default function NeuralPanel({ studio }: { studio: Studio }) {
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(Math.max(280, el.clientWidth)));
+    const fit = () => setWidth(Math.max(160, el.clientWidth));
+    fit(); // an observer stays quiet while the page is hidden
+    const ro = new ResizeObserver(fit);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [inGroove]); // Groove has no heatmap, so it mounts again with the other styles
 
   useEffect(() => {
     const c = canvas.current;
@@ -54,23 +57,23 @@ export default function NeuralPanel({ studio }: { studio: Studio }) {
 
     let raf = 0;
     const paint = () => {
-      raf = requestAnimationFrame(paint);
+      if (playing) raf = requestAnimationFrame(paint);
       ctx.clearRect(0, 0, width, H + REST_H);
       riff.probs.forEach((p, s) => {
         const x = s * cw;
         rows.forEach((r, y) => {
           const v = Math.min(1, p[r.token] * 2.4);
-          ctx.fillStyle = `rgba(184,255,44,${0.04 + v * 0.86})`;
+          ctx.fillStyle = `rgba(255,92,53,${0.04 + v * 0.8})`;
           ctx.fillRect(x + 0.5, y * ch + 0.5, cw - 1, ch - 1);
         });
         const rest = p[restToken];
-        ctx.fillStyle = `rgba(165,147,255,${0.06 + rest * 0.8})`;
+        ctx.fillStyle = `rgba(160,164,168,${0.06 + rest * 0.6})`;
         ctx.fillRect(x + 0.5, H + 2, cw - 1, REST_H - 3);
 
         const chosen = riff.tokens[s];
         const y = chosen === restToken ? H + 2 : rows.findIndex((r) => r.token === chosen) * ch;
         if (y >= 0) {
-          ctx.strokeStyle = config.pins[s] != null ? "#ffb02c" : "#ffffff";
+          ctx.strokeStyle = config.pins[s] != null ? "#ffd2a0" : "#f2eee7";
           ctx.lineWidth = config.pins[s] != null ? 2 : 1.25;
           ctx.strokeRect(x + 1, y + 1, cw - 2, (chosen === restToken ? REST_H - 3 : ch) - 2);
         }
@@ -85,9 +88,9 @@ export default function NeuralPanel({ studio }: { studio: Studio }) {
         ctx.fillRect(step * cw, 0, 1.5, H + REST_H);
       }
     };
-    raf = requestAnimationFrame(paint);
+    paint();
     return () => cancelAnimationFrame(raf);
-  }, [riff, rows, restToken, track, width, config.pins]);
+  }, [riff, rows, restToken, track, width, config.pins, playing, studio.seeks]);
 
   function click(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!riff?.neural) return;
@@ -98,25 +101,33 @@ export default function NeuralPanel({ studio }: { studio: Studio }) {
     if (token != null) pinRiff(step, token);
   }
 
+  if (inGroove) {
+    return (
+      <p className="model-note">
+        Groove is written from hand-built families. The trained sequence model writes the other five styles,{" "}
+        <a href="https://github.com/TangeniI/sound-x-ai#the-model" target="_blank" rel="noreferrer">about the model</a>.
+      </p>
+    );
+  }
   const held = Object.keys(config.pins).length;
   const meta = neuralRiff.meta;
 
   return (
     <section className="panel neural" aria-label="Neural riff model">
       <div className="panel-head">
-        <h2>Inside the riff model</h2>
-        <span className={riff?.neural ? "badge on" : "badge"}>{riff?.neural ? "GRU running in your browser" : "Markov fallback"}</span>
+        <h2>Sequence model</h2>
+        <span className={riff?.neural ? "badge on" : "badge"}>{riff?.neural ? "GRU, running locally" : "Markov fallback"}</span>
       </div>
       <p className="lede">
         Bright cells are the notes the network thought likely at each 16th. The outline is what it chose.
-        <strong> Click a cell to hold that note</strong>, and it rewrites everything after it.
+        <strong> Click a cell to hold that note</strong>, and it rewrites everything after it. Each style plays some or all of these notes.
       </p>
       <div ref={wrap} className="heat">
         <canvas ref={canvas} role="img" aria-label="Probability of each note at each step of the riff" style={{ width, height: H + REST_H }} onClick={click} />
       </div>
       <div className="heat-foot">
         <span>{held ? `${held} held` : "2 bars"} · temperature {riff?.temperature.toFixed(2)}</span>
-        {meta && <span>Trained on {meta.riffs.toLocaleString("en-GB")} real riffs · {meta.testNats.toFixed(2)} nats on unseen artists, best n-gram {meta.baselineNats.toFixed(2)}</span>}
+        {meta && <span>Trained on {meta.riffs.toLocaleString("en-GB")} riffs from 80s and 90s dance and pop · {meta.testNats.toFixed(2)} nats on unseen artists, n-gram baseline {meta.baselineNats.toFixed(2)}</span>}
       </div>
     </section>
   );

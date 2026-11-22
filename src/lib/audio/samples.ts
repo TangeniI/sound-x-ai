@@ -55,7 +55,7 @@ export class SampleBank {
     const job = fetch(`${BASE}${id}.flac`)
       .then((r) => { if (!r.ok) throw new Error(`${id}: ${r.status}`); return r.arrayBuffer(); })
       .then((data) => ctx.decodeAudioData(data))
-      .then((buf) => { this.buffers.set(id, buf); })
+      .then((buf) => { this.buffers.set(id, buf); this.failed.delete(id); })
       .catch(() => {
         this.failed.add(id);
         this.buffers.set(id, standIn(ctx, id));

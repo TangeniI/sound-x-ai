@@ -16,7 +16,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           react: ["react", "react-dom"],
-          framer: ["framer-motion"],
         },
       },
     },

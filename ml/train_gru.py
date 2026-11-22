@@ -205,7 +205,7 @@ def with_bos(riffs, bos):
     return np.concatenate([np.full((len(riffs), 1), bos, dtype=np.int64), riffs.astype(np.int64)], axis=1)
 
 
-def bootstrap(fn, rng, rounds=200):
+def bootstrap(fn, rng, rounds=1000):
     """95% interval from resampling the test riffs."""
     scores = [fn(rng) for _ in range(rounds)]
     return [float(np.percentile(scores, 2.5)), float(np.percentile(scores, 97.5))]
@@ -277,6 +277,8 @@ def main():
     model.p = best_params
     tr_list, va_list, te_list = train.tolist(), val.tolist(), test.tolist()
     baselines = [best_ngram(n, V, tr_list, va_list, te_list) for n in (1, 2, 3, 4)]
+    # The baseline to beat is picked on validation, like the GRU's epoch, never on test.
+    baseline = min(baselines, key=lambda b: b["val"])
     gru_test = model.loss(test[:, :-1], test[:, 1:])
 
     boot = np.random.default_rng(11)
@@ -289,9 +291,10 @@ def main():
         "metric": "next-token negative log-likelihood (nats), lower is better",
         "uniform": math.log(V),
         "ngrams": baselines,
+        "baseline": {"order": baseline["order"], "chosenBy": "validation", "test": baseline["test"]},
         "gru": {
             "E": E, "H": H, "bestEpoch": best_epoch, "val": best_val, "test": gru_test,
-            "test95": bootstrap(gru_sample, boot, 40),
+            "test95": bootstrap(gru_sample, boot),
             "parameters": int(sum(v.size for v in model.p.values())),
         },
         "gradientCheckWorstRelativeError": grad_error,
@@ -312,7 +315,7 @@ def main():
             "riffs": len(train),
             "dataset": "Lakh MIDI clean, electronic artists",
             "testNats": round(gru_test, 4),
-            "baselineNats": round(min(b["test"] for b in baselines), 4),
+            "baselineNats": round(baseline["test"], 4),
         },
     }
     path = os.path.join(HERE, "..", "public", "model", "riff-gru.json")

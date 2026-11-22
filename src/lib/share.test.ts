@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { encodeConfig, parseConfigFromURL } from "./share";
+import { cleanControls, encodeConfig, parseConfigFromURL } from "./share";
 import { DEFAULT_CONFIG } from "./generative-engine";
 import type { GeneratorConfig, NoteEdit } from "../types";
 
@@ -30,5 +30,31 @@ describe("share links", () => {
 
   it("returns nothing for an empty query", () => {
     expect(parseConfigFromURL("")).toEqual({ config: {}, edits: [] });
+  });
+
+  it("rejects held notes and edits that can't exist", () => {
+    expect(parseConfigFromURL("p=0:999.1:-1.40:3").config.pins).toEqual({});
+    expect(parseConfigFromURL("n=ab999999:40").edits).toEqual([]);
+    expect(parseConfigFromURL(`n=${Array(5000).fill("ab4:40").join(".")}`).edits).toHaveLength(1000);
+  });
+
+  it("carries a Groove family and the key an edit was made in", () => {
+    const groove: GeneratorConfig = { ...cfg, style: "driving", family: "concrete" };
+    const keyed: NoteEdit[] = [{ op: "add", lane: "bass", step: 18, pitch: 31, root: 7 }];
+    const back = parseConfigFromURL(encodeConfig(groove, keyed));
+    expect(back.config).toEqual(groove);
+    expect(back.edits).toEqual(keyed);
+    expect(parseConfigFromURL("f=constructor").config.family).toBeUndefined();
+  });
+
+  it("opens links from before the rebuild", () => {
+    expect(parseConfigFromURL("s=melodic").config.style).toBe("tribal");
+    expect(parseConfigFromURL("s=constructor").config.style).toBeUndefined();
+  });
+
+  it("keeps only usable saved settings", () => {
+    expect(cleanControls({ style: "nope", rootPitch: null, tempo: 0, energy: 2, mode: "x" })).toEqual({});
+    expect(cleanControls(null)).toEqual({});
+    expect(cleanControls({ style: "dub", tempo: 140, extra: 1 })).toEqual({ style: "dub", tempo: 140 });
   });
 });

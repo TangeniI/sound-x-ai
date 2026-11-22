@@ -9,17 +9,16 @@
 
 import type { Automation, Lane, NoteEvent, Track } from "../../types";
 import { applyMix, buildGraph, CHANNELS, OUTPUT_GAIN, setChannel, type ChannelId, type Graph } from "./graph";
-import { allSamplesFor } from "./kits";
+import { trackSamples } from "./kits";
 import { sampleBank } from "./samples";
-import { automate, makeRuntime, startAtmosphere, trigger, type Runtime } from "./voices";
+import { automate, makeRuntime, resumeAutomation, startAtmosphere, trigger, type Runtime } from "./voices";
 
 type Scheduled = { time: number; note?: NoteEvent; auto?: Automation };
 
 const TICK_MS = 25;
 const LOOKAHEAD = 0.18;
-const LOOKAHEAD_HIDDEN = 1.3; // background tabs throttle timers to about 1 Hz
+const LOOKAHEAD_HIDDEN = 2.2; // background tabs throttle timers to about 1 Hz
 
-export interface Levels { low: number; mid: number; high: number; level: number }
 export interface LoopRange { start: number; end: number }
 
 export class Player {
@@ -29,6 +28,7 @@ export class Player {
   private track: Track | null = null;
   private events: Scheduled[] = [];
   private cursor = 0;            // index of the next event
+  private queuedUntil = 0;       // audio time up to which events have been handed over
   private segTime = 0;           // audio time the current pass through the loop began
   private segPos = 0;            // track position at segTime
   private passStart: { time: number; pos: number }[] = [];
@@ -36,10 +36,11 @@ export class Player {
   private active = new Set<AudioBufferSourceNode>();
   private atmos: AudioBufferSourceNode | null = null;
   private analyser: AnalyserNode | null = null;
-  private freq: Uint8Array<ArrayBuffer> | null = null;
   private wave: Float32Array<ArrayBuffer> | null = null;
+  private bins: Float32Array<ArrayBuffer> | null = null;
   private muted = new Set<ChannelId>();
   private soloed = new Set<ChannelId>();
+  private levels: Partial<Record<ChannelId, number>> = {};
   private rate = 0;
   playing = false;
   loop = true;
@@ -61,8 +62,8 @@ export class Player {
     if (ctx.state === "suspended") void ctx.resume();
   }
 
-  async prepare(style: Track["config"]["style"], tonality: Track["tonality"], onProgress?: (p: number) => void): Promise<void> {
-    await sampleBank.ensure(this.context(), allSamplesFor(style, tonality), onProgress);
+  async prepare(track: Track, onProgress?: (p: number) => void): Promise<void> {
+    await sampleBank.ensure(this.context(), trackSamples(track), onProgress);
   }
 
   private ensureGraph(track: Track): Graph {
@@ -70,48 +71,75 @@ export class Player {
     if (!this.graph) {
       this.graph = buildGraph(ctx, sampleBank);
       this.analyser = ctx.createAnalyser();
-      this.analyser.fftSize = 1024;
+      this.analyser.fftSize = 8192; // enough to tell the kick from the sub
       this.analyser.smoothingTimeConstant = 0.55;
       this.graph.out.connect(this.analyser);
-      this.freq = new Uint8Array(this.analyser.frequencyBinCount);
       this.wave = new Float32Array(this.analyser.fftSize);
+      this.bins = new Float32Array(this.analyser.frequencyBinCount);
       this.applyStrips();
     }
     return this.graph;
   }
 
-  /** Load a track. If it is playing, the new one takes over at the same bar position. */
+  /**
+   * Load a track. While playing, it takes over where the queued audio ends, at
+   * the same step, so moving a control never cuts the sound.
+   */
   setTrack(track: Track): void {
-    const wasPlaying = this.playing;
-    const fraction = this.track && this.track.durationSec > 0 ? this.position() / this.track.durationSec : 0;
+    const old = this.track;
+    const now = this.context().currentTime;
+    const at = Math.max(now + 0.01, this.queuedUntil);
+    const scale = old ? track.stepSec / old.stepSec : 1;
+    const oldPos = this.playing ? this.segPos + (at - this.segTime) : this.segPos;
+
     this.track = track;
+    this.levels = { ...track.config.levels };
     const graph = this.ensureGraph(track);
-    applyMix(graph, track.mix, track.stepSec * 4, this.context().currentTime);
+    this.applyStrips();
+    const previous = this.rt;
     this.rt = makeRuntime(this.context(), graph, sampleBank, track, this.active);
-    this.events = [
-      ...track.notes.map((note) => ({ time: note.startTime, note })),
-      ...track.automation.map((auto) => ({ time: auto.time, auto })),
-    ].sort((a, b) => a.time - b.time);
-    if (this.range) this.range = null;
-    if (wasPlaying) this.seek(fraction * track.durationSec, true);
+    this.rt.openHat = previous?.openHat;
+    this.setEvents(track);
+    if (this.range) {
+      const start = this.range.start * scale;
+      const end = Math.min(track.durationSec, this.range.end * scale);
+      this.range = end > start ? { start, end } : null;
+    }
+
+    let pos = oldPos * scale;
+    if (pos >= track.durationSec) pos = this.playing && track.durationSec ? pos % track.durationSec : 0;
+    if (!this.playing) {
+      this.segPos = pos;
+      applyMix(graph, track.mix, track.stepSec * 4, now);
+      return;
+    }
+    this.segTime = at;
+    this.segPos = pos;
+    this.addPass(at, pos);
+    this.cursor = this.indexAt(pos);
+    this.restoreAutomation(pos, at);
   }
 
   /** Swap notes only: an edit should not move the playhead or reset the mix. */
   updateNotes(notes: NoteEvent[]): void {
     if (!this.track) return;
-    const pos = this.position();
     const merged = { ...this.track, notes };
     this.track = merged;
     if (this.rt) this.rt.track = merged;
-    this.events = [
-      ...notes.map((note) => ({ time: note.startTime, note })),
-      ...merged.automation.map((auto) => ({ time: auto.time, auto })),
-    ].sort((a, b) => a.time - b.time);
-    if (this.playing) this.cursor = this.indexAt(Math.max(pos + LOOKAHEAD, this.nextPos()));
+    this.setEvents(merged);
+    if (this.playing) this.cursor = this.indexAt(this.segPos + (this.queuedUntil - this.segTime));
   }
 
-  private nextPos(): number {
-    return this.events[this.cursor]?.time ?? 0;
+  private setEvents(track: Track): void {
+    this.events = [
+      ...track.notes.map((note) => ({ time: note.startTime, note })),
+      ...track.automation.map((auto) => ({ time: auto.time, auto })),
+    ].sort((a, b) => a.time - b.time);
+  }
+
+  private addPass(time: number, pos: number): void {
+    this.passStart.push({ time, pos });
+    if (this.passStart.length > 8) this.passStart.shift();
   }
 
   private indexAt(pos: number): number {
@@ -134,7 +162,9 @@ export class Player {
     await ctx.resume();
     this.ensureGraph(this.track);
     this.silence();
-    this.startFrom(from);
+    const { start, end } = this.bounds();
+    const outside = this.range ? from < start : false;
+    this.startFrom(!outside && from < end - 0.05 ? from : start);
     this.playing = true;
     clearInterval(this.timer);
     this.timer = setInterval(() => this.tick(), TICK_MS);
@@ -147,28 +177,28 @@ export class Player {
     const when = ctx.currentTime + 0.06;
     this.segTime = when;
     this.segPos = pos;
+    this.queuedUntil = when;
     this.passStart = [{ time: when, pos }];
     this.cursor = this.indexAt(pos);
     this.restoreAutomation(pos, when);
     const g = this.graph!;
-    g.out.gain.cancelScheduledValues(ctx.currentTime);
-    g.out.gain.setTargetAtTime(OUTPUT_GAIN, ctx.currentTime, 0.008);
+    // after the fade-out that silence() queued, not over the top of it
+    g.out.gain.setTargetAtTime(OUTPUT_GAIN, when - 0.012, 0.004);
   }
 
   /** Set the mix moves as they would stand at `pos`, so a seek lands correctly. */
   private restoreAutomation(pos: number, time: number): void {
     const g = this.graph!;
     const track = this.track!;
-    const latest: Partial<Record<Automation["param"], number>> = {};
-    for (const a of track.automation) if (a.time <= pos) latest[a.param] = a.value;
-    g.sweep.frequency.cancelScheduledValues(time);
-    g.sweep.frequency.setValueAtTime(latest.cutoff ?? 18000, time);
-    g.hallOut.gain.cancelScheduledValues(time);
-    g.echoFb.gain.cancelScheduledValues(time);
+    for (const p of [g.sweep.frequency, g.hallOut.gain, g.echoFb.gain, g.lowGate.gain]) {
+      // hold where a half-finished ramp would be; Firefox can only cancel it
+      if (typeof p.cancelAndHoldAtTime === "function") p.cancelAndHoldAtTime(time);
+      else p.cancelScheduledValues(time);
+    }
     applyMix(g, track.mix, track.stepSec * 4, time);
-    if (latest.space != null) g.hallOut.gain.setValueAtTime(latest.space, time);
-    if (latest.echo != null) g.echoFb.gain.setValueAtTime(latest.echo, time);
-    g.state.acidCutoff = latest.acid ?? 1;
+    const latest = new Map<Automation["param"], Automation>();
+    for (const a of track.automation) if (a.time <= pos) latest.set(a.param, a);
+    for (const a of latest.values()) resumeAutomation(g, a, pos, time);
   }
 
   private tick(): void {
@@ -180,25 +210,29 @@ export class Player {
       const next = this.events[this.cursor];
       if (next && next.time < end) {
         const at = this.segTime + (next.time - this.segPos);
-        if (at >= horizon) return;
+        if (at >= horizon) break;
         if (at >= ctx.currentTime - 0.01) this.dispatch(next, at);
         this.cursor++;
         continue;
       }
       const wrapAt = this.segTime + (end - this.segPos);
-      if (wrapAt >= horizon) return;
+      if (wrapAt >= horizon) break;
       if (!this.loop) {
-        const left = Math.max(0, wrapAt - ctx.currentTime);
-        clearInterval(this.timer);
-        setTimeout(() => { this.stop(); this.onEnd(); }, left * 1000 + 40);
-        return;
+        // checked on each tick, so a seek, replay or loop change cancels the ending
+        if (ctx.currentTime >= wrapAt) {
+          this.stop();
+          this.onEnd();
+          return;
+        }
+        break;
       }
       this.segTime = wrapAt;
       this.segPos = start;
-      this.passStart.push({ time: wrapAt, pos: start });
-      if (this.passStart.length > 4) this.passStart.shift();
+      this.addPass(wrapAt, start);
       this.cursor = this.indexAt(start);
+      this.restoreAutomation(start, wrapAt);
     }
+    this.queuedUntil = Math.max(this.queuedUntil, horizon);
   }
 
   private dispatch(e: Scheduled, time: number): void {
@@ -266,7 +300,7 @@ export class Player {
     this.playing = false;
     clearInterval(this.timer);
     this.silence();
-    this.segPos = 0;
+    this.segPos = this.range?.start ?? 0;
     try { this.atmos?.stop(); } catch { /* not started */ }
     this.atmos = null;
   }
@@ -277,9 +311,19 @@ export class Player {
     const g = this.graph;
     if (!g) return;
     const now = this.context().currentTime;
-    for (const id of CHANNELS) {
-      setChannel(g, id, this.soloed.size ? this.soloed.has(id) : !this.muted.has(id), now);
-    }
+    const on = this.audible();
+    for (const id of CHANNELS) setChannel(g, id, on.has(id), now, this.levels[id] ?? 0);
+  }
+
+  /** Move a fader, in dB, without rebuilding anything. */
+  setLevel(id: ChannelId, db: number): void {
+    this.levels[id] = db;
+    this.applyStrips();
+  }
+
+  /** The channels mute and solo leave playing. Exports use the same answer. */
+  audible(): Set<ChannelId> {
+    return new Set(CHANNELS.filter((id) => (this.soloed.size ? this.soloed.has(id) : !this.muted.has(id))));
   }
 
   setMute(id: ChannelId, on: boolean): void {
@@ -292,23 +336,21 @@ export class Player {
     this.applyStrips();
   }
 
-  /** Live level bands from the master output, for the visuals. */
-  levels(): Levels {
-    if (!this.analyser || !this.freq || !this.wave || !this.ctx) return { low: 0, mid: 0, high: 0, level: 0 };
-    this.analyser.getByteFrequencyData(this.freq);
+  /** The master spectrum in dB, one value per bin of `hz`. */
+  spectrum(): { db: Float32Array; hz: number; floor: number; top: number } | null {
+    if (!this.analyser || !this.bins || !this.ctx) return null;
+    this.analyser.getFloatFrequencyData(this.bins);
+    return { db: this.bins, hz: this.ctx.sampleRate / this.analyser.fftSize, floor: -100, top: -15 };
+  }
+
+  /** Output level for the transport meter. */
+  level(): number {
+    if (!this.analyser || !this.wave) return 0;
     this.analyser.getFloatTimeDomainData(this.wave);
     let sum = 0;
     for (const x of this.wave) sum += x * x;
     const db = 10 * Math.log10(sum / this.wave.length + 1e-9);
-    const hz = this.ctx.sampleRate / this.analyser.fftSize;
-    const band = (lo: number, hi: number) => {
-      const a = Math.max(1, Math.round(lo / hz));
-      const b = Math.max(a + 1, Math.round(hi / hz));
-      let s = 0;
-      for (let i = a; i < b; i++) s += this.freq![i];
-      return s / (b - a) / 255;
-    };
-    return { low: band(30, 140), mid: band(300, 2500), high: band(5000, 14000), level: Math.max(0, Math.min(1, (db + 36) / 36)) };
+    return Math.max(0, Math.min(1, (db + 36) / 36));
   }
 }
 

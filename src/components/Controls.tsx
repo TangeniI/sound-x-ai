@@ -1,24 +1,29 @@
 /**
  * Controls.tsx
  *
- * The left-hand control surface. Every control is a real form element, so the
+ * The control surface. Every control is a real form element, so the
  * whole panel works from the keyboard and with a screen reader.
  */
 
 import type { Studio } from "../hooks/useStudio";
 import { LENGTHS } from "../lib/generative-engine";
-import type { StyleId } from "../types";
+import { clock, keyName, NOTE_NAMES, STYLES } from "../lib/labels";
 
-const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
-const STYLES: { id: StyleId; label: string; desc: string }[] = [
-  { id: "driving", label: "Driving", desc: "909s, rolling bass" },
-  { id: "hypnotic", label: "Hypnotic", desc: "808s, deep groove" },
-  { id: "acid", label: "Acid", desc: "squelching 303 line" },
-  { id: "melodic", label: "Melodic", desc: "FM chords, pads" },
-  { id: "dub", label: "Dub", desc: "chords in tape echo" },
-  { id: "warehouse", label: "Warehouse", desc: "rumble, anvil, brake drum" },
-];
+export function StylePicker({ studio }: { studio: Studio }) {
+  return (
+    <fieldset className="styles" aria-label="Style">
+      <div className="style-grid">
+        {STYLES.map((s) => (
+          <label key={s.id} className={studio.config.style === s.id ? "style-card on" : "style-card"}>
+            <input type="radio" name="style" checked={studio.config.style === s.id} onChange={() => studio.update({ style: s.id })} />
+            <strong>{s.label}</strong>
+            <span>{s.desc}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
 
 interface SliderProps {
   id: string;
@@ -53,42 +58,30 @@ export default function Controls({ studio }: { studio: Studio }) {
 
   return (
     <section className="panel controls" aria-label="Track controls">
-      <fieldset className="styles">
-        <legend>Style</legend>
-        <div className="style-grid">
-          {STYLES.map((s) => (
-            <label key={s.id} className={config.style === s.id ? "style-card on" : "style-card"}>
-              <input type="radio" name="style" checked={config.style === s.id} onChange={() => update({ style: s.id })} />
-              <strong>{s.label}</strong>
-              <span>{s.desc}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
+      <div className="panel-head"><h2>Track</h2></div>
       <Slider id="tempo" label="Tempo" hint="Speed of the track" value={config.tempo} min={90} max={175} step={1} show={(v) => `${v} BPM`} onChange={(tempo) => update({ tempo })} />
-      <Slider id="energy" label="Energy" hint="Drive, rumble, punch and layers" value={config.energy} show={percent} onChange={(energy) => update({ energy })} />
-      <Slider id="mood" label="Mood" hint="Dark scales to bright ones" value={config.valence} show={percent} onChange={(valence) => update({ valence })} />
-      <Slider id="density" label="Density" hint="How busy the rhythm is" value={config.density} show={percent} onChange={(density) => update({ density })} />
-      <Slider id="variation" label="Variation" hint="How far the riff strays" value={config.variation} show={percent} onChange={(variation) => update({ variation })} />
+      <Slider id="energy" label="Energy" hint="Drive, rumble, punch and ride" value={config.energy} show={percent} onChange={(energy) => update({ energy })} />
+      <Slider id="mood" label="Light" hint="Phrygian, then minor, then Dorian" value={config.valence} show={percent} onChange={(valence) => update({ valence })} />
+      <Slider id="density" label="Density" hint="How many 16ths are filled" value={config.density} show={percent} onChange={(density) => update({ density })} />
+      <Slider id="variation" label="Variation" hint="How much each phrase changes" value={config.variation} show={percent} onChange={(variation) => update({ variation })} />
 
       <fieldset>
         <legend>Length</legend>
-        <div className="segmented">
+        <div className="lengths">
           {LENGTHS.map((bars) => (
             <label key={bars} className={config.bars === bars ? "on" : ""}>
               <input type="radio" name="length" checked={config.bars === bars} onChange={() => update({ bars })} />
-              <span>{bars}</span>
+              <span>{clock(barSec(bars))}</span>
             </label>
           ))}
         </div>
-        <small>{config.bars} bars, about {Math.round(barSec(config.bars))} seconds</small>
+        <small>{config.bars} bars at {config.tempo} BPM</small>
       </fieldset>
 
       <fieldset>
-        <legend>Key {track && <span className="legend-value">{NOTES[track.root]} {track.tonality}</span>}</legend>
+        <legend>Key {track && <span className="legend-value">{keyName(track)}</span>}</legend>
         <div className="keys">
-          {NOTES.map((n, i) => (
+          {NOTE_NAMES.map((n, i) => (
             <label key={n} className={config.rootPitch === i ? "on" : ""}>
               <input type="radio" name="key" checked={config.rootPitch === i} onChange={() => update({ rootPitch: i })} />
               <span>{n}</span>

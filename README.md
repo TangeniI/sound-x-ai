@@ -1,50 +1,87 @@
 # Sound × AI
 
 ![CI](https://github.com/TangeniI/sound-x-ai/actions/workflows/ci.yml/badge.svg)
-![React](https://img.shields.io/badge/React-19-149eca)
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
-![ML](https://img.shields.io/badge/model-GRU%20(from%20scratch)-b8ff2c)
-![backend](https://img.shields.io/badge/backend-none-555)
+
+[![Sound × AI](public/og.png)](https://sound-x-ai.vercel.app)
 
 **[▶ Open the live studio](https://sound-x-ai.vercel.app)**
 
-A techno studio that runs entirely in your browser. A neural network trained on real riffs
-writes the music, and it plays through recordings of real drum machines, metal, keys and
-rooms. There's no backend, no API key and no account.
+A dark groove techno studio that runs entirely in your browser. It writes hypnotic,
+percussion-led tracks and plays them through recordings of real drum machines, metal, keys
+and rooms. Groove is built from twelve hand-written families. In the other five styles, a neural network trained on
+real riffs writes the sequence line. There's no backend, no API key and no account.
 
 **In short:** I trained a GRU from scratch in NumPy, with hand-written back-propagation and
-Adam, on 13,502 riffs from real MIDI. On artists it never saw, it scores 1.24 nats against
-1.55 for the best n-gram baseline. The forward pass is re-implemented in TypeScript and
+Adam, on 9,248 riffs from real MIDI (13,502 in all, split by artist). On artists it never
+saw, it scores 1.24 nats against 1.56 for the n-gram baseline. The forward pass is re-implemented in TypeScript and
 checked against Python by a test. A custom Web Audio engine then plays the result through
-45 recordings and 2 measured rooms, with the same signal path for live playback and export.
+real recordings and 2 measured rooms, with the same signal path for live playback and export.
 
 ## What you can do
 
-- **Press play.** A full track is ready: intro, groove, break, build, drop and outro.
-- **Move a slider.** Energy, mood and density change the music as it plays, without replacing it.
-- **Rewrite one part.** Mute, solo or re-roll each lane on its own.
-- **Edit notes.** Click the piano roll to add or remove them.
-- **Steer the model.** Watch its note probabilities, then hold a note, and it rewrites what follows.
-- **Match a track.** Drop in an audio file to set the tempo, key, energy and mood. Nothing leaves your device.
-- **Take it with you.** Export a WAV, six stems or MIDI, or share a link that reopens the exact track.
+- Press play and Groove opens on eight bars at the peak. Full track plays the arrangement, up to five minutes.
+- Randomise a Groove: it picks a family, then varies it within that family's limits.
+- Undo, redo and go back to your last 30 takes, which survive a reload.
+- Pick from six styles: Groove, Hypnotic, Percussive, Raw, Dub and Acid.
+- See every layer enter and leave on one screen, and click to play from any bar.
+- Change energy, light, density and key as it plays, without stopping it.
+- Mute, solo, re-roll or lock each part. With a part locked, New take and Randomise rewrite only the others.
+- Set each part's level, and the levels travel in share links.
+- Click the piano roll to add or remove a note everywhere that pattern repeats. Shift-click changes one bar.
+- Outside Groove, watch the model's note probabilities, then hold a note and it rewrites what follows.
+- Drop in an audio file to set the tempo, key, energy and light. Nothing leaves your device.
+- Loop 4, 8 or 16 bars, and export the loop as a WAV that repeats without a click, as stems or as MIDI.
+- Export the whole track as a WAV, seven stems in one zip (the kick on its own) or MIDI, at 24 or 16-bit and 48 or 44.1 kHz, without the parts you muted. Or share a link that reopens the exact track.
 
-## How it sounds real
+## How Groove is built
 
-Techno comes from machines, samples and rooms, so that's what this uses.
+Each of the twelve families has one lead idea: a stab, a rolling low end, a percussion hook,
+a chopped texture, a squared 808 line or a sequence. It also has its own kit, tempo and key
+range, swing, clap or snare role, and rules for what the other parts leave out.
+
+- **The idea is there from the first bar** and the other parts leave it room.
+- **A track has a beginning, a middle and an end.** It states the idea bare and filtered, then
+  opens up and answers it. The first drop changes to the family's other sounds, with another
+  answer and a bigger backbeat, and the outro goes back to how it began. The idea's first bar holds throughout.
+- **The flow is wind-down and return.** The low end leaves for a beat, a bar or two bars at
+  phrase ends, and for one main break. It comes back at full level exactly on the one.
+- **The clap has a job.** It can be the backbeat, the answer or the tension into a hit, and
+  each family has its own snare, layered from the recordings.
+- **Weak combinations are turned down:** no clear idea, parts on top of it, too empty or too busy.
+
+The rules came from measuring the structure of twelve reference records. No pattern or audio
+from them is used.
+
+## How every style works
+
+- **The kick is the grid.** Every other voice sits behind it by its own amount, with swing
+  and a little drift from hit to hit.
+- **Loops turn against the bar.** Percussion loops over 3, 5, 6, 7, 12 or more
+  steps, so a short pattern takes several bars to repeat.
+- **Arrangement is addition and subtraction.** Layers enter and leave through the track, with
+  small changes every 4 bars and dropouts at the end of some 8-bar phrases.
+- **The low end is drums.** Outside the Acid style the bass never leaves the tonic, and its groove is
+  in the gaps and the weight.
+- **The harmony stays on the tonic.** A test checks every pitched lane in every style and key.
+- **Repeats vary.** The kick stays steady. Hats, percussion, bass and synths shift in tuning,
+  timing or brightness, and the variation is seeded, so an export matches what you heard.
+
+## Sounds
 
 | Layer | Source |
 |---|---|
-| **Drums** | Original TR-808 recordings, Roland TR-8 hardware, hand claps |
-| **Metal** | A real anvil, brake drum and gong |
-| **Chords and pads** | Sampled chords repitched as one block, as on a hardware sampler, including pads from [The Black Dog](https://theblackdogma.com) |
-| **Keys** | Yamaha TX81Z hardware |
-| **Space** | Convolution reverb measured in Oxford's medieval Divinity School |
-| **Rumble** | A long 808 kick through that hall, distorted, filtered to the sub and ducked on every hit |
+| **Drums** | Original TR-808 recordings, Roland TR-8 hardware, hand claps, layered |
+| **Percussion** | 808 toms tuned to the key, rims, shaker, a real anvil and brake drum |
+| **Bass** | The tail of an original TR-808 kick for the sub, with a short filtered drum or impact for the knock |
+| **Stabs and atmosphere** | Short, dark TX81Z stabs on bare intervals, a struck gong an octave down |
+| **Sequence** | Yamaha TX81Z hardware through a fast filter |
+| **Space** | Convolution reverb measured in Oxford's medieval Divinity School and York Guildhall |
+| **Rumble** | A long 808 kick through that hall, driven, filtered to the sub and ducked on every hit |
 | **Echo** | A dub tape delay at a dotted eighth, with filtered, saturated repeats and wow |
-| **Texture** | Vinyl noise under everything, and risers made from a gong and cymbal played backwards |
+| **Texture** | Vinyl noise, and risers made from a scraped gong and a cymbal played backwards |
 
-The kick is tuned to the key, and the low end stays mono. Each style has its own kit. Every
-recording is CC0 or CC BY: see [SOURCES.md](public/samples/SOURCES.md).
+The kick is tuned to the key, the low end is mono, and width folds down to mono. Each style
+has its own kit. Every recording is CC0 or CC BY: see [SOURCES.md](public/samples/SOURCES.md).
 
 ## The model
 
@@ -52,13 +89,21 @@ recording is CC0 or CC BY: see [SOURCES.md](public/samples/SOURCES.md).
 |---|---|
 | Random guess | 3.18 |
 | Bigram | 1.70 |
-| Trigram (best baseline) | 1.55 |
+| Trigram | 1.55 |
+| 4-gram (the baseline, best on validation) | 1.56 |
 | **GRU** | **1.24** |
 
-The first version trained on 20 hand-written motifs. A held-out test showed it scored worse
-than random guessing on new material, so I rebuilt the pipeline: real data, a split by
-artist, early stopping and baselines. The [model card](ml/MODEL_CARD.md) has the method and
+The baseline is picked on validation, like everything else. The trigram scores slightly lower
+on test, but choosing it for that reason would mean tuning on the test set.
+
+The first version (commit `14c88ae`) trained on exactly 20 hand-written motifs and had no
+held-out data, so there was no way to tell learning from memorising. I rebuilt the pipeline:
+real data, a split by artist, early stopping and baselines. The [model card](ml/MODEL_CARD.md) has the method and
 its limitations.
+
+The corpus is 80s and 90s dance and pop, not dark groove, so the model is given a small
+job: the sequence line outside Groove, and the 303 line in Acid. Everything else is written
+by rules, in [`generative-engine.ts`](src/lib/generative-engine.ts) and [`groove/`](src/lib/groove).
 
 ## Audio analysis
 
@@ -68,14 +113,15 @@ its limitations.
 - **Key:** peak-picked chroma from a long FFT, correlated with Krumhansl-Kessler key profiles
 - **Energy and brightness:** RMS loudness and spectral centroid
 
-Tempo was exact on 8 of 8 of the app's own renders and within 1 BPM on every test pulse from
-120 to 145 BPM. Key detection is much weaker on dense, drum-heavy mixes, at 5 of 12 on those
-renders, so the app labels it an estimate and you can change it in one click.
+The [tests](src/lib/audio-analysis.test.ts) check tempo to within 1 BPM on pulses from 120 to
+145 BPM, and key on chord progressions in all 12 minor keys plus C major. Those are clean
+signals. Real mixes are harder, especially dense, drum-heavy ones, so the app labels the key
+an estimate and you can change it in one click.
 
 ## Stack
 
-Vite, React, TypeScript, the native Web Audio API, Canvas, and Framer Motion for the
-droid. `@tonejs/midi` writes MIDI files. Training uses only NumPy.
+Vite, React, TypeScript, the native Web Audio API, and Canvas.
+`@tonejs/midi` writes MIDI files. Training uses only NumPy.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and signal path.
 
@@ -84,7 +130,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and signal path.
 ```bash
 npm install
 npm run dev      # http://localhost:5173
-npm test         # 43 tests
+npm test         # 215 tests
 npm run build    # typecheck + production build
 ```
 
@@ -95,21 +141,32 @@ src/
 ├── App.tsx                   layout and keyboard shortcuts
 ├── hooks/useStudio.ts        all studio state and actions
 ├── components/
-│   ├── TrackTimeline.tsx     arrangement, piano roll, mixer strips
+│   ├── Overview.tsx          the whole arrangement on one screen
+│   ├── TrackTimeline.tsx     pattern editor, mixer strips
+│   ├── Spectrum.tsx          analyser on the master
 │   ├── NeuralPanel.tsx       live view of the riff model
 │   ├── Controls.tsx          style, sliders, length, key
 │   ├── Transport.tsx         play, position, loop, export
-│   └── AudioDropzone, DNARadar, CharacterDisplay, AudioReactiveBackground, Credits
+│   └── AudioDropzone, Credits
 └── lib/
     ├── generative-engine.ts  writes the track
+    ├── groove/               Groove's families, part choice, flow and composer
+    ├── writing.ts            randomness and note helpers both composers share
+    ├── history.ts            undo, redo, takes
     ├── neural-engine.ts      GRU forward pass and sampling
     ├── audio-analysis.ts     tempo and key detection
     ├── share.ts              permalinks
-    └── audio/                samples, kits, graph, voices, player, render
+    ├── zip.ts                stems zip, no dependency
+    └── audio/                samples, kits, graph, voices, player, render, loop slices and stems
 ml/                           corpus builder, trainer, results, model card
 scripts/build_samples.py      builds the sample pack
 public/samples/               the recordings and their credits
 ```
+
+## Licence
+
+The code is [MIT](LICENSE). The recordings keep their own licences, listed in
+[SOURCES.md](public/samples/SOURCES.md).
 
 ---
 

@@ -40,7 +40,7 @@ export default function AudioDropzone({ onFile }: Props) {
 
   return (
     <section className="panel drop" aria-label="Analyse a track">
-      <div className="panel-head"><h2>Match a track</h2></div>
+      <div className="panel-head"><h2>Match a reference</h2></div>
       <label
         className={dragging ? "dropzone over" : "dropzone"}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -54,7 +54,7 @@ export default function AudioDropzone({ onFile }: Props) {
       >
         <input ref={input} type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handle(f); }} />
         <strong>{busy ? "Analysing…" : "Drop an audio file"}</strong>
-        <span>Sets tempo, key, energy and mood to match. Stays on your device.</span>
+        <span>Sets tempo, key, energy and light. It copies no audio. Stays on your device.</span>
       </label>
       {status && <p className="drop-status" role="status">{status}</p>}
       {result && (

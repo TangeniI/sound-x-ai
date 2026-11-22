@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, describe, it, expect } from "vitest";
-import { arrange, DEFAULT_CONFIG, euclid, featuresFromConfig, generativeEngine, LENGTHS } from "./generative-engine";
+import { arrange, DEFAULT_CONFIG, euclid, generativeEngine, LENGTHS } from "./generative-engine";
+import { familyById } from "./groove/families";
 import { neuralRiff, type ModelJSON } from "./neural-engine";
 import type { GeneratorConfig, Lane, StyleId } from "../types";
 
 const base: GeneratorConfig = { ...DEFAULT_CONFIG, bars: 64 };
-const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "melodic", "dub", "warehouse"];
+const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "tribal", "dub", "warehouse"];
 const gen = (over: Partial<GeneratorConfig> = {}) => generativeEngine.generate({ ...base, ...over });
 const lane = (t: ReturnType<typeof gen>, l: string) => t.notes.filter((n) => n.instrument === l);
 const pitches = (t: ReturnType<typeof gen>, l: string) => lane(t, l).map((n) => `${n.step}:${n.pitch}`);
@@ -20,7 +21,9 @@ describe("takes and seeds", () => {
   });
 
   it("writes a different track for a different seed", () => {
-    expect(pitches(gen({ seed: 1 }), "lead")).not.toEqual(pitches(gen({ seed: 2 }), "lead"));
+    expect(pitches(gen({ style: "hypnotic", seed: 1 }), "lead")).not.toEqual(pitches(gen({ style: "hypnotic", seed: 2 }), "lead"));
+    const whole = (seed: number) => gen({ seed }).notes.map((n) => `${n.instrument}:${n.step}:${n.pitch}`);
+    expect(whole(1)).not.toEqual(whole(2));
   });
 
   it("re-rolling one lane leaves the others alone", () => {
@@ -92,7 +95,8 @@ describe("arrangement", () => {
     const drop = t.sections.find((s) => s.kind === "drop")!;
     const kicksIn = (s: typeof brk) => t.notes.filter((n) => n.pitch === 36 && n.instrument === "drums" && n.step >= s.startBar * 16 && n.step < (s.startBar + s.bars) * 16).length;
     expect(kicksIn(brk)).toBe(0);
-    expect(kicksIn(drop)).toBeGreaterThanOrEqual(drop.bars * 4);
+    expect(kicksIn({ ...drop, bars: 1 })).toBeGreaterThanOrEqual(4); // all of it, straight away
+    expect(kicksIn(drop)).toBeGreaterThanOrEqual(drop.bars * 4 * 0.8); // bar the wind-downs inside it
   });
 
   it("gives a track real length", () => {
@@ -105,7 +109,8 @@ describe("every style", () => {
   for (const style of STYLES) {
     it(`${style} writes in range, in order, with a full band`, () => {
       const t = gen({ style });
-      for (const l of ["drums", "bass", "lead", "perc"]) expect(lane(t, l).length).toBeGreaterThan(0);
+      const band = t.family ? ["drums", "bass", "perc", familyById(t.family.id)!.idea.lane] : ["drums", "bass", "lead", "perc"];
+      for (const l of band) expect(lane(t, l).length).toBeGreaterThan(0);
       for (const n of t.notes) {
         expect(n.pitch).toBeGreaterThanOrEqual(0);
         expect(n.pitch).toBeLessThanOrEqual(127);
@@ -127,12 +132,13 @@ describe("every style", () => {
 
 describe("piano-roll edits", () => {
   it("survive regeneration and tempo changes", () => {
-    const first = lane(gen(), "lead")[0];
+    const hypnotic = { ...base, style: "hypnotic" as const };
+    const first = lane(gen(hypnotic), "lead")[0];
     const edits = [
       { op: "remove" as const, lane: "lead" as Lane, step: first.step, pitch: first.pitch },
       { op: "add" as const, lane: "bass" as Lane, step: 8, pitch: 40 },
     ];
-    const t = generativeEngine.generate({ ...base, tempo: 140 }, edits);
+    const t = generativeEngine.generate({ ...hypnotic, tempo: 140 }, edits);
     expect(t.notes.some((n) => n.instrument === "lead" && n.step === first.step && n.pitch === first.pitch)).toBe(false);
     expect(t.notes.some((n) => n.instrument === "bass" && n.step === 8 && n.pitch === 40)).toBe(true);
   });
@@ -144,10 +150,153 @@ describe("helpers", () => {
     expect(euclid(4, 16)).toEqual([true, false, false, false, true, false, false, false, true, false, false, false, true, false, false, false]);
     expect(euclid(5, 16, 3).filter(Boolean)).toHaveLength(5);
   });
+});
+const pc = (p: number) => ((p % 12) + 12) % 12;
 
-  it("seeds visual features from controls", () => {
-    const f = featuresFromConfig(base);
-    expect(f.tempo).toBe(base.tempo);
-    expect(f.danceability).toBe(base.density);
+describe("in key, in every style and key", () => {
+  for (const style of STYLES) {
+    for (const valence of [0.1, 0.5, 0.75]) {
+      it(`${style} at light ${valence}`, () => {
+        for (let rootPitch = 0; rootPitch < 12; rootPitch++) {
+          for (const mode of ["auto", "major"] as const) {
+            const t = gen({ style, rootPitch, valence, mode });
+            for (const n of t.notes.filter((x) => ["bass", "lead", "stab", "pad"].includes(x.instrument))) {
+              for (const off of n.chord ?? [0]) expect(t.scale).toContain(pc(n.pitch + off - rootPitch));
+            }
+            const bass = lane(t, "bass");
+            const onRoot = bass.filter((n) => pc(n.pitch) === rootPitch).length;
+            // a 303 line wanders, every other bass sits on the tonic
+            if (style === "acid") expect(onRoot).toBeGreaterThan(0);
+            else expect(onRoot / bass.length).toBeGreaterThan(0.5);
+          }
+        }
+      });
+    }
+  }
+
+  it("never turns the bass into a melody, outside the 303", () => {
+    for (const style of ["driving", "hypnotic", "tribal", "dub", "warehouse"] as const) {
+      for (const rootPitch of [0, 4, 9]) {
+        for (const n of lane(gen({ style, rootPitch }), "bass")) expect(n.pitch % 12).toBe(rootPitch);
+      }
+    }
+  });
+
+  it("keeps every stab off the kick", () => {
+    for (const style of ["driving", "hypnotic", "tribal", "dub", "warehouse"] as const) {
+      for (let seed = 1; seed < 25; seed++) {
+        for (const n of lane(gen({ style, seed }), "stab")) expect(n.step % 4).not.toBe(0);
+      }
+    }
+  });
+
+  it("only puts a third in the Dub stab", () => {
+    for (const style of ["driving", "hypnotic", "tribal", "warehouse"] as const) {
+      for (const n of lane(gen({ style }), "stab")) for (const off of n.chord ?? [0]) expect([0, 7]).toContain(off % 12);
+    }
+  });
+
+  it("keeps every bass but the 303 in the E1 to D#2 octave", () => {
+    for (const style of STYLES.filter((s) => s !== "acid")) {
+      for (let rootPitch = 0; rootPitch < 12; rootPitch++) {
+        for (const n of lane(gen({ style, rootPitch }), "bass")) {
+          expect(n.pitch).toBeGreaterThanOrEqual(28);
+          expect(n.pitch).toBeLessThanOrEqual(39);
+        }
+      }
+    }
+  });
+});
+
+describe("groove", () => {
+  const t = gen();
+  const offset = (n: { step: number; startTime: number }) => n.startTime - n.step * t.stepSec;
+
+  it("puts every kick on the grid", () => {
+    for (const n of lane(t, "drums").filter((x) => x.pitch === 36)) expect(Math.abs(offset(n))).toBeLessThan(1e-9);
+  });
+
+  it("lets the other parts lean back by varying amounts", () => {
+    const late = t.notes.filter((n) => n.instrument === "perc" || n.pitch === 42).map(offset);
+    expect(Math.min(...late)).toBeGreaterThanOrEqual(0);
+    expect(new Set(late.map((v) => Math.round(v * 10000))).size).toBeGreaterThan(20);
+    expect(Math.max(...late)).toBeLessThan(0.05);
+  });
+
+  it("turns percussion loops against the bar", () => {
+    for (const style of STYLES) {
+      const track = gen({ style });
+      const s = track.sections.find((x) => x.kind === "groove")!;
+      const bar = (b: number) => lane(track, "perc").filter((n) => Math.floor(n.step / 16) === s.startBar + b).map((n) => `${n.step % 16}:${n.pitch}`).sort().join();
+      expect(new Set([0, 1, 2, 3].map(bar)).size).toBeGreaterThan(1);
+    }
+  });
+
+  it("keeps the bass off every kick", () => {
+    for (const style of STYLES.filter((s) => s !== "acid")) {
+      for (const n of lane(gen({ style }), "bass")) expect(n.step % 4).not.toBe(0);
+    }
+  });
+
+  it("starts each mix move where the last one ended", () => {
+    for (const bars of LENGTHS) {
+      const track = gen({ bars });
+      for (const param of ["cutoff", "space", "echo"]) {
+        const moves = track.automation.filter((a) => a.param === param);
+        for (let i = 1; i < moves.length; i++) {
+          expect(moves[i].from).toBe(moves[i - 1].value);
+          expect(moves[i].time).toBeGreaterThanOrEqual(moves[i - 1].time + moves[i - 1].ramp - 1e-6);
+        }
+      }
+    }
+  });
+});
+
+describe("edits and dead controls", () => {
+  it("a deleted bass note stays deleted in another key", () => {
+    const n = lane(gen(), "bass")[0];
+    const edits = [{ op: "remove" as const, lane: "bass" as Lane, step: n.step, pitch: n.pitch, root: base.rootPitch }];
+    for (let rootPitch = 0; rootPitch < 12; rootPitch++) {
+      const t = generativeEngine.generate({ ...base, rootPitch }, edits);
+      expect(lane(t, "bass").some((x) => x.step === n.step)).toBe(false);
+    }
+  });
+
+  it("an added note follows the key, and a deletion doesn't take it", () => {
+    const n = lane(gen(), "bass")[0];
+    const edits = [
+      { op: "remove" as const, lane: "bass" as Lane, step: n.step, pitch: n.pitch, root: 9 },
+      { op: "add" as const, lane: "bass" as Lane, step: n.step, pitch: 33, root: 9 },
+    ];
+    const t = generativeEngine.generate({ ...base, rootPitch: 7 }, edits);
+    expect(lane(t, "bass").filter((x) => x.step === n.step).map((x) => x.pitch)).toEqual([31]);
+  });
+
+  it("minor differs from auto when auto would pick another scale", () => {
+    expect(gen({ valence: 0.1, mode: "minor" }).scale).not.toEqual(gen({ valence: 0.1 }).scale);
+  });
+
+  it("rewriting Chord or Atmos never gives the same part", () => {
+    const part = (t: ReturnType<typeof gen>, l: string) => lane(t, l).map((n) => `${n.step}:${n.variant}`).join();
+    for (const style of ["hypnotic", "tribal", "dub", "warehouse"] as const) {
+      for (let seed = 1; seed < 20; seed++) {
+        for (const l of ["stab", "pad"] as Lane[]) {
+          expect(part(gen({ style, seed }), l)).not.toBe(part(gen({ style, seed, laneSeeds: { [l]: 1 } }), l));
+        }
+      }
+    }
+  });
+});
+
+describe("hostile input", () => {
+  it("ignores held notes the model doesn't have", () => {
+    for (const token of [999, -1, 1.5, NaN, neuralRiff.vocab.length]) {
+      expect(() => gen({ pins: { 0: token } })).not.toThrow();
+    }
+  });
+
+  it("drops edits past the end of the track", () => {
+    const t = generativeEngine.generate({ ...base, bars: 16 }, [{ op: "add", lane: "bass", step: 900, pitch: 33 }]);
+    expect(t.notes.some((n) => n.step === 900)).toBe(false);
   });
 });
