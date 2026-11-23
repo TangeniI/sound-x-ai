@@ -4,14 +4,24 @@ import type { Lane, SectionKind, StyleId, Track } from "../types";
 
 export const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
-export const STYLES: { id: StyleId; label: string; desc: string }[] = [
-  { id: "driving", label: "Groove", desc: "Twelve families, one idea each" },
-  { id: "hypnotic", label: "Hypnotic", desc: "Turning loops, long echoes" },
-  { id: "tribal", label: "Percussive", desc: "Tuned toms, taps and hand claps" },
-  { id: "warehouse", label: "Raw", desc: "Anvil, brake drum, rumble" },
-  { id: "dub", label: "Dub", desc: "One chord, tape and space" },
-  { id: "acid", label: "Acid", desc: "Accent, slide, resonance" },
+/**
+ * `store` is the shelf a store files the style on. Beatport splits techno in two:
+ * Peak Time / Driving, and Raw / Deep / Hypnotic. Files carry it as their genre.
+ */
+export const STYLES: { id: StyleId; label: string; desc: string; store: string }[] = [
+  { id: "driving", label: "Groove", desc: "Twelve families, one idea each", store: "Peak Time / Driving" },
+  { id: "hypnotic", label: "Hypnotic", desc: "Turning loops, long echoes", store: "Raw / Deep / Hypnotic" },
+  { id: "tribal", label: "Percussive", desc: "Tuned toms, taps and hand claps", store: "Peak Time / Driving" },
+  { id: "warehouse", label: "Raw", desc: "Anvil, brake drum, rumble", store: "Raw / Deep / Hypnotic" },
+  { id: "dub", label: "Dub", desc: "One chord, tape and space", store: "Raw / Deep / Hypnotic" },
+  { id: "acid", label: "Acid", desc: "Accent, slide, resonance", store: "Peak Time / Driving" },
 ];
+
+/** The genre a store would file a track under, as written in its tags. */
+export function storeGenre(style: StyleId): string {
+  const shelf = STYLES.find((s) => s.id === style)?.store;
+  return shelf ? `Techno (${shelf})` : "Techno";
+}
 
 // the engine's section kinds predate the dark groove rebuild; these are the words for them
 export const SECTION_LABEL: Record<SectionKind, string> = {

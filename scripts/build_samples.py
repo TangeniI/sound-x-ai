@@ -36,6 +36,11 @@ SAMPLES = [
     ("clap_hands", "vcsl/Clap_rr2.wav", dict(mono=True, max=0.4)),
     ("rim_909", "tr8/009_909_Rim_Shot.wav", dict(mono=True, max=0.15)),
     ("rim_808", "fischer808/rs8_RS.WAV", dict(mono=True)),
+    # snares
+    ("snare_909", "tr8/005_909_Snare_Drum_1.wav", dict(mono=True, max=0.4)),
+    ("snare_909_b", "tr8/006_909_Snare_Drum_2.wav", dict(mono=True, max=0.4)),
+    ("snare_808", "fischer808/sd8_SD2550.WAV", dict(mono=True, max=0.4)),
+    ("snare_real", "vcsl/snare1_f_rr1.wav", dict(mono=True, max=0.6)),
     # hats + cymbals
     ("hat_909_c", "tr8/008_909_Closed_HiHat.wav", dict(mono=True, max=0.3)),
     ("hat_909_o", "tr8/007_909_Open_HiHat.wav", dict(mono=True, max=0.7)),
@@ -63,6 +68,20 @@ SAMPLES = [
     ("pad_1", "sonicpi/tbd_pad_1.flac", dict()),
     ("pad_2", "sonicpi/tbd_pad_2.flac", dict()),
     ("pad_3", "sonicpi/tbd_pad_3.flac", dict()),
+    # real instruments for the chord, named by measured pitch (C4 = middle C). VCSL's own
+    # names disagree: the Steinway calls middle C "C4", the organ, upright and vibes "C3"
+    ("grand_c3", "vcsl/JHPiano_Sus_Close_C3_vl3_rr1.wav", dict(mono=True, max=2.5)),
+    ("grand_c4", "vcsl/JHPiano_Sus_Close_C4_vl3_rr1.wav", dict(mono=True, max=2.2)),
+    ("grand_c5", "vcsl/JHPiano_Sus_Close_C5_vl3_rr1.wav", dict(mono=True, max=1.8)),
+    ("upright_c4", "vcsl/Upright1_Sus_C3_vl2_rr1.wav", dict(mono=True, max=2.5)),
+    ("upright_c5", "vcsl/Upright1_Sus_C4_vl2_rr1.wav", dict(mono=True, max=2.2)),
+    ("upright_c6", "vcsl/Upright1_Sus_C5_vl2_rr1.wav", dict(mono=True, max=1.8)),
+    ("organ_c4", "vcsl/NT5_Man3Quiet_C3_rr1.wav", dict(mono=True, max=2.5)),
+    ("organ_c5", "vcsl/NT5_Man3Quiet_C4_rr1.wav", dict(mono=True, max=2.2)),
+    ("organ_c6", "vcsl/NT5_Man3Quiet_C5_rr1.wav", dict(mono=True, max=1.8)),
+    ("vibes_c4", "vcsl/Vibes_soft_C3_v2_rr1_Main.wav", dict(mono=True, max=2.5)),
+    ("vibes_b4", "vcsl/Vibes_soft_B3_v2_rr1_Main.wav", dict(mono=True, max=2.2)),
+    ("vibes_c6", "vcsl/Vibes_soft_C5_v2_rr1_Main.wav", dict(mono=True, max=1.8)),
     # Yamaha TX81Z hardware
     ("fm_c3", "tx81z/FMPiano_C3_vl3.wav", dict(mono=True, max=2.5)),
     ("fm_c4", "tx81z/FMPiano_C4_vl3.wav", dict(mono=True, max=2.2)),

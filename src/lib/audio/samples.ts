@@ -2,9 +2,13 @@
  * lib/audio/samples.ts
  *
  * Loads and caches the recorded sample pack. Each style only fetches the kit it
- * needs. If a file fails to load, a small stand-in is built so the track still
- * plays: a missing sample should never stop the demo.
+ * needs. The producer's own sounds come from this browser's storage instead.
+ * If a file fails to load, a small stand-in is built so the track still plays:
+ * a missing sample should never stop the demo.
  */
+
+import { isOwnSound } from "./kits";
+import { ownSampleBytes } from "./own-samples";
 
 const BASE = "/samples/";
 
@@ -52,8 +56,10 @@ export class SampleBank {
     if (this.buffers.has(id)) return Promise.resolve();
     const running = this.pending.get(id);
     if (running) return running;
-    const job = fetch(`${BASE}${id}.flac`)
-      .then((r) => { if (!r.ok) throw new Error(`${id}: ${r.status}`); return r.arrayBuffer(); })
+    const bytes = isOwnSound(id)
+      ? ownSampleBytes(id)
+      : fetch(`${BASE}${id}.flac`).then((r) => { if (!r.ok) throw new Error(`${id}: ${r.status}`); return r.arrayBuffer(); });
+    const job = bytes
       .then((data) => ctx.decodeAudioData(data))
       .then((buf) => { this.buffers.set(id, buf); this.failed.delete(id); })
       .catch(() => {

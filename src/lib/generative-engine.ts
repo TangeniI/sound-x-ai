@@ -16,7 +16,8 @@ import type {
   Automation, GeneratorConfig, Lane, MixParams, NoteEdit, NoteEvent,
   RiffInfo, Section, SectionKind, StyleId, Track,
 } from "../types";
-import { KITS, RUMBLE_ROOT, type Kit } from "./audio/kits";
+import { KITS, RUMBLE_ROOT, withSounds, type Kit } from "./audio/kits";
+import { djVersion } from "./groove/dj";
 import { composeGroove, grooveMoves } from "./groove/compose";
 import { neuralRiff } from "./neural-engine";
 import {
@@ -236,7 +237,7 @@ export class GenerativeEngine {
     writeLead(ctx);
     writeFx(ctx);
 
-    const kit = KITS[cfg.style];
+    const kit = withSounds(KITS[cfg.style], cfg.sounds);
     const mix = mixFor(cfg, style, kit);
     const inTrack = edits.filter((e) => e.step < bars * SPB);
     const final = applyEdits(notes, inTrack, time, stepSec, root).sort((a, b) => a.startTime - b.startTime);
@@ -258,17 +259,39 @@ export class GenerativeEngine {
   }
 
   private groove(cfg: GeneratorConfig, edits: NoteEdit[]): Track {
-    const bars = nearestLength(cfg.bars);
+    // the DJ version wraps the longest arrangement
+    const body = cfg.dj ? LENGTHS[LENGTHS.length - 1] : nearestLength(cfg.bars);
     const { scale, tonality } = chooseScale(cfg);
     const stepSec = 60 / cfg.tempo / 4;
-    const { notes, sections, pulls, time, family, kit, endKit } = composeGroove(cfg, bars);
+    const composed = composeGroove(cfg, body);
+    const { pulls, family } = composed;
+    // a swap holds for the whole track, across the family's change of sounds at the drop
+    const kit = withSounds(composed.kit, cfg.sounds);
     const mix = mixFor(cfg, family.mix, kit);
+    let parts = {
+      notes: composed.notes,
+      sections: composed.sections,
+      automation: grooveMoves(composed.sections, pulls, stepSec, mix),
+      endKit: { ...composed.endKit, kit: withSounds(composed.endKit.kit, cfg.sounds) },
+      stepSec,
+    };
+    let bars = body;
+    let time = composed.time;
+    if (cfg.dj) {
+      const dj = djVersion(parts);
+      parts = dj;
+      bars = dj.totalBars;
+      // a step in the drums at either end sits where the same step of a bar would
+      time = (step: number) => step < dj.offsetSteps ? composed.time(step) : composed.time(step - dj.offsetSteps) + dj.offsetSteps * stepSec;
+    }
+    const { notes, sections, automation, endKit } = parts;
+    // edits are in the finished track's steps, so they go on last
     const inTrack = edits.filter((e) => e.step < bars * SPB);
     return {
       config: cfg,
       notes: applyEdits(notes, inTrack, time, stepSec, cfg.rootPitch).sort((a, b) => a.startTime - b.startTime),
       sections,
-      automation: grooveMoves(sections, pulls, stepSec, mix),
+      automation,
       bpm: cfg.tempo,
       stepSec,
       durationSec: bars * SPB * stepSec,

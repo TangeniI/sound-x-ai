@@ -7,6 +7,9 @@
 
 import type { Studio } from "../hooks/useStudio";
 import { LENGTHS } from "../lib/generative-engine";
+import { DJ_BARS } from "../lib/groove/dj";
+
+const DJ_TOTAL = LENGTHS[LENGTHS.length - 1] + 2 * DJ_BARS;
 import { clock, keyName, NOTE_NAMES, STYLES } from "../lib/labels";
 
 export function StylePicker({ studio }: { studio: Studio }) {
@@ -18,6 +21,7 @@ export function StylePicker({ studio }: { studio: Studio }) {
             <input type="radio" name="style" checked={studio.config.style === s.id} onChange={() => studio.update({ style: s.id })} />
             <strong>{s.label}</strong>
             <span>{s.desc}</span>
+            <small className="shelf" title="Where Beatport files it">{s.store}</small>
           </label>
         ))}
       </div>
@@ -55,6 +59,8 @@ const percent = (v: number) => `${Math.round(v * 100)}%`;
 export default function Controls({ studio }: { studio: Studio }) {
   const { config, track, update } = studio;
   const barSec = (bars: number) => (bars * 240) / config.tempo;
+  const groove = config.style === "driving";
+  const dj = groove && !!config.dj;
 
   return (
     <section className="panel controls" aria-label="Track controls">
@@ -69,13 +75,21 @@ export default function Controls({ studio }: { studio: Studio }) {
         <legend>Length</legend>
         <div className="lengths">
           {LENGTHS.map((bars) => (
-            <label key={bars} className={config.bars === bars ? "on" : ""}>
-              <input type="radio" name="length" checked={config.bars === bars} onChange={() => update({ bars })} />
+            <label key={bars} className={config.bars === bars && !dj ? "on" : ""}>
+              <input type="radio" name="length" checked={config.bars === bars && !dj} onChange={() => update({ bars, dj: false })} />
               <span>{clock(barSec(bars))}</span>
             </label>
           ))}
+          {groove && (
+            <label className={dj ? "on" : ""} title="Six to eight minutes, with 32 bars of drums alone at each end for mixing">
+              <input type="radio" name="length" checked={dj} onChange={() => update({ dj: true })} />
+              <span>DJ {clock(barSec(DJ_TOTAL))}</span>
+            </label>
+          )}
         </div>
-        <small>{config.bars} bars at {config.tempo} BPM</small>
+        <small>
+          {dj ? `${DJ_TOTAL} bars at ${config.tempo} BPM, with ${DJ_BARS} of drums alone at each end` : `${config.bars} bars at ${config.tempo} BPM`}
+        </small>
       </fieldset>
 
       <fieldset>

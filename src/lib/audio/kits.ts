@@ -10,7 +10,7 @@
  * recordings, not read from their file names.
  */
 
-import type { StyleId, Track } from "../../types";
+import type { SoundSlot, StyleId, Track } from "../../types";
 
 export interface Zone { id: string; root: number }
 
@@ -66,6 +66,8 @@ export interface Kit {
   tops?:  number;    // level of the hats, ride and shaker
   percLen?: number;  // seconds, chokes ringing metal
   stab?:  { open: number; rest: number }; // Hz, where its filter starts and settles
+  /** The instrument the chord plays on, a key of CHORDS. */
+  chord?: string;
   /** A recording chopped into short hits, when texture is the idea. */
   texture?: { id: string; rate: number; offset: number; from: number; to: number; gain: number };
   /** Level of each part, to sit the idea where it can be heard. */
@@ -77,6 +79,20 @@ export const FM: Zone[] = [
   { id: "fm_c4", root: 60 },
   { id: "fm_c5", root: 72 },
 ];
+
+/**
+ * Real instruments for the chord, three recorded notes each, roots measured rather than
+ * read from file names. `gain` evens out their loudness, measured in a render through the chord filter. The organ's pipes speak slowly,
+ * about 30 ms to half level, so it sits softer on the beat than the others.
+ */
+export const CHORDS: Record<string, { label: string; zones: Zone[]; gain: number }> = {
+  chord_grand: { label: "Grand piano", gain: 1.12, zones: [{ id: "grand_c3", root: 48 }, { id: "grand_c4", root: 60 }, { id: "grand_c5", root: 72 }] },
+  chord_upright: { label: "Upright piano", gain: 1.16, zones: [{ id: "upright_c4", root: 60 }, { id: "upright_c5", root: 72 }, { id: "upright_c6", root: 84 }] },
+  chord_organ: { label: "Pipe organ", gain: 1.47, zones: [{ id: "organ_c4", root: 60 }, { id: "organ_c5", root: 72 }, { id: "organ_c6", root: 84 }] },
+  chord_vibes: { label: "Vibraphone", gain: 1.21, zones: [{ id: "vibes_c4", root: 60 }, { id: "vibes_b4", root: 71 }, { id: "vibes_c6", root: 84 }] },
+};
+export const DEFAULT_CHORD = "chord_grand";
+export const chordOf = (k: Pick<Kit, "chord">) => CHORDS[k.chord ?? DEFAULT_CHORD] ?? CHORDS[DEFAULT_CHORD];
 
 /** The long 808 kick from 0.16 s, past its click and pitch drop: a plain analogue sub. */
 export const SUB = { id: "kick_808_long", offset: 0.16, root: 31.4 };
@@ -143,17 +159,81 @@ export const KITS: Record<StyleId, Kit> = {
   },
 };
 
-/** Everything every style shares: the rooms, the sub, the stab, the transitions. */
+/** Everything every style shares: the rooms, the sub, the transitions. */
 const SHARED = [
   "ir_hall", "ir_room", SUB.id, "tom_808", "shaker", "ride_909", "vinyl", "gong", "gong_scrape", "impact", "crash_909",
-  "cymbal_808_long", "fx_bed", ...FM.map((z) => z.id),
+  "cymbal_808_long", "fx_bed",
 ];
 
 export function kitSamples(k: Kit): string[] {
   return [
-    ...SHARED, k.kick, ...k.clap, k.rim, ...k.hatC, k.hatO, ...k.perc, ...(k.bass.body ? [k.bass.body.id] : []),
+    ...SHARED, ...chordOf(k).zones.map((z) => z.id), k.kick, ...k.clap, k.rim, ...k.hatC, k.hatO, ...k.perc, ...(k.bass.body ? [k.bass.body.id] : []),
     ...k.lead.zones.map((z) => z.id), ...(k.snare ?? []).map((l) => l.id), ...(k.texture ? [k.texture.id] : []),
   ];
+}
+
+/* ─────────────────────────── swaps ─────────────────────────────── */
+
+export interface SoundChoice { id: string; label: string }
+
+const PERC_CHOICES: SoundChoice[] = [
+  { id: "perc_tap", label: "Tap" }, { id: "perc_blip", label: "Blip" }, { id: "rim_909", label: "909 rim" },
+  { id: "rim_808", label: "808 rim" }, { id: "anvil", label: "Anvil" }, { id: "brake_drum", label: "Brake drum" },
+  { id: "cowbell_808", label: "808 cowbell" },
+];
+
+/** The recordings each swappable sound can use instead of the family's own. */
+export const SOUND_CHOICES: Record<SoundSlot, SoundChoice[]> = {
+  kick: [
+    { id: "kick_909", label: "909 (TR-8)" }, { id: "kick_909_atk", label: "909 attack (TR-8)" },
+    { id: "kick_tek", label: "Tek" }, { id: "kick_klub", label: "Klub" },
+  ],
+  snare: [
+    { id: "snare_909", label: "909 snare (TR-8)" }, { id: "snare_909_b", label: "909 snare, tight (TR-8)" },
+    { id: "snare_808", label: "808 snare" }, { id: "snare_real", label: "Acoustic snare" },
+    { id: "clap_909", label: "909 clap" }, { id: "clap_808", label: "808 clap" }, { id: "clap_hands", label: "Hand clap" },
+  ],
+  clap: [
+    { id: "clap_909", label: "909 clap" }, { id: "clap_808", label: "808 clap" }, { id: "clap_hands", label: "Hand clap" },
+    { id: "snare_909", label: "909 snare (TR-8)" }, { id: "snare_808", label: "808 snare" },
+  ],
+  rim: [{ id: "rim_909", label: "909 rim" }, { id: "rim_808", label: "808 rim" }, { id: "perc_tap", label: "Tap" }],
+  hat: [
+    { id: "hat_909_c", label: "909 closed" }, { id: "hat_808_c", label: "808 closed" },
+    { id: "hat_raw", label: "Raw hat" }, { id: "shaker", label: "Shaker" },
+  ],
+  open: [{ id: "hat_909_o", label: "909 open" }, { id: "hat_808_o", label: "808 open" }, { id: "ride_909", label: "909 ride" }],
+  perc: PERC_CHOICES,
+  perc2: PERC_CHOICES,
+  chord: Object.entries(CHORDS).map(([id, c]) => ({ id, label: c.label })),
+};
+
+/** Measured body pitch of each kick, so a swapped one is still tuned to the key. */
+const KICK_ROOTS: Record<string, number> = { kick_909: 32.5, kick_909_atk: 32.5, kick_tek: 40.3, kick_klub: 32, kick_808_long: 31.4 };
+/** Pitches measured from the producer's own kicks when they were added. */
+export const ownKickRoots = new Map<string, number>();
+
+export const isOwnSound = (id: string) => id.startsWith("user:");
+
+/** A kit with the producer's swaps in place. Swapping the snare replaces its layers with one hit. */
+export function withSounds(kit: Kit, sounds: Partial<Record<SoundSlot, string>> = {}): Kit {
+  const out: Kit = { ...kit };
+  const { kick, snare, clap, rim, hat, open, perc, perc2, chord } = sounds;
+  if (kick) {
+    out.kick = kick;
+    out.kickRoot = KICK_ROOTS[kick] ?? ownKickRoots.get(kick) ?? kit.kickRoot;
+    out.kickGain = kick === "kick_tek" ? 0.7 : 1;
+    // a kick of the producer's own plays whole; theirs is already the length they want
+    if (isOwnSound(kick)) out.kickLen = undefined;
+  }
+  if (snare) { out.snare = [{ id: snare, gain: 0.95 }]; out.snareGain = 1.2; }
+  if (clap) out.clap = [clap, kit.clap[1]];
+  if (rim) out.rim = rim;
+  if (hat) out.hatC = [hat, kit.hatC[1]];
+  if (open) out.hatO = open;
+  if (perc || perc2) out.perc = [perc ?? kit.perc[0], perc2 ?? kit.perc[1]];
+  if (chord && CHORDS[chord]) out.chord = chord;
+  return out;
 }
 
 /** Closest zone to a pitch, plus the playback rate that lands on it. */

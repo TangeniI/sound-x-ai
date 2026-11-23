@@ -205,15 +205,20 @@ function tapeEcho(ctx: BaseAudioContext): { input: AudioNode; output: AudioNode;
   return { input, output, feedback, time: delay.delayTime };
 }
 
-/** `master: false` leaves off the master processing, for stems that sum. */
+/**
+ * `master: false` is for stems: they keep the master's tone, which is linear and so
+ * still sums, and leave off its compression and ceiling, which don't.
+ */
 export function buildGraph(ctx: BaseAudioContext, bank: SampleBank, { master = true } = {}): Graph {
   /* master */
   const masterIn = gainNode(ctx, 1);
   const out = gainNode(ctx, OUTPUT_GAIN);
+  const subsonic = filter(ctx, "highpass", 28);
+  const lowTone = filter(ctx, "lowshelf", 70, 0.7, -2.8);
+  const mids = filter(ctx, "peaking", 1100, 0.8, -1.5);
+  const air = filter(ctx, "highshelf", 8500, 0.7, -11);
+  chain(masterIn, subsonic);
   if (master) {
-    const subsonic = filter(ctx, "highpass", 28);
-    const lowTone = filter(ctx, "lowshelf", 70, 0.7, -2.8);
-    const mids = filter(ctx, "peaking", 1100, 0.8, -1.5);
     const glue = ctx.createDynamicsCompressor();
     glue.threshold.value = -10;
     glue.ratio.value = 1.6;
@@ -222,12 +227,10 @@ export function buildGraph(ctx: BaseAudioContext, bank: SampleBank, { master = t
     glue.knee.value = 10;
     const level = gainNode(ctx, MASTER_LEVEL * undoMakeup(-10, 1.6));
     const ceiling = saturator(ctx, ceilingCurve(), "4x");
-    const air = filter(ctx, "highshelf", 8500, 0.7, -11);
-    chain(masterIn, subsonic);
     chain(monoLows(ctx, subsonic), lowTone, mids, air, glue, level, ceiling.input);
     ceiling.node.connect(out);
   } else {
-    chain(masterIn, gainNode(ctx, STEM_LEVEL), out);
+    chain(monoLows(ctx, subsonic), lowTone, mids, air, gainNode(ctx, STEM_LEVEL), out);
   }
   out.connect(ctx.destination);
 

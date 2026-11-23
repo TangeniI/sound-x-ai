@@ -7,14 +7,15 @@
  * track rather than a similar one.
  */
 
-import type { ChannelId, GeneratorConfig, Lane, ModeChoice, NoteEdit, StyleId } from "../types";
+import type { ChannelId, GeneratorConfig, Lane, ModeChoice, NoteEdit, SoundSlot, StyleId } from "../types";
 import { LANES } from "../types";
+import { isOwnSound, SOUND_CHOICES } from "./audio/kits";
 import { familyById } from "./groove/families";
 
 const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "tribal", "dub", "warehouse"];
 const RENAMED: Record<string, StyleId> = { melodic: "tribal" }; // links made before the dark groove rebuild
 const MAX_EDITS = 1000;
-const MAX_STEP = 176 * 16;
+const MAX_STEP = 240 * 16; // the DJ version's length
 const RIFF_STEPS = 32;
 const MAX_TOKEN = 63;
 const MODES: ModeChoice[] = ["auto", "minor", "major"];
@@ -22,10 +23,17 @@ const LANE_CODES: Record<Lane, string> = { lead: "l", pad: "p", stab: "s", bass:
 const CODE_LANES = Object.fromEntries(Object.entries(LANE_CODES).map(([k, v]) => [v, k])) as Record<string, Lane>;
 const CHANNEL_CODES: Record<ChannelId, string> = { ...LANE_CODES, rumble: "r", fx: "x" };
 const CODE_CHANNELS = Object.fromEntries(Object.entries(CHANNEL_CODES).map(([k, v]) => [v, k])) as Record<string, ChannelId>;
+const SLOT_CODES: Record<SoundSlot, string> = { kick: "k", snare: "s", clap: "c", rim: "r", hat: "h", open: "o", perc: "p", perc2: "q", chord: "m" };
+const CODE_SLOTS = Object.fromEntries(Object.entries(SLOT_CODES).map(([k, v]) => [v, k])) as Record<string, SoundSlot>;
+const OWN_ID = /^user:[0-9a-f]{16}$/;
 /** How far a fader goes, in dB. */
 export const LEVEL_RANGE = [-24, 6] as const;
 
-export function encodeConfig(cfg: GeneratorConfig, edits: NoteEdit[] = []): string {
+/**
+ * `own: false` leaves out the producer's own sounds, which live only on their
+ * device: a link that named them would open to stand-ins elsewhere.
+ */
+export function encodeConfig(cfg: GeneratorConfig, edits: NoteEdit[] = [], { own = true } = {}): string {
   const p = new URLSearchParams();
   p.set("s", cfg.style);
   p.set("b", String(cfg.bars));
@@ -38,12 +46,17 @@ export function encodeConfig(cfg: GeneratorConfig, edits: NoteEdit[] = []): stri
   p.set("r", String(cfg.seed));
   if (cfg.family) p.set("f", cfg.family);
   if (cfg.mode !== "auto") p.set("m", cfg.mode);
+  if (cfg.dj) p.set("j", "1");
   const lanes = LANES.filter((l) => cfg.laneSeeds[l]).map((l) => `${LANE_CODES[l]}${cfg.laneSeeds[l]}`);
   if (lanes.length) p.set("l", lanes.join("."));
   const pins = Object.entries(cfg.pins).map(([step, tok]) => `${step}:${tok}`);
   if (pins.length) p.set("p", pins.join("."));
   const levels = Object.entries(cfg.levels ?? {}).filter(([, db]) => db).map(([id, db]) => `${CHANNEL_CODES[id as ChannelId]}${Number(db!.toFixed(1))}`);
   if (levels.length) p.set("g", levels.join("_"));
+  const sounds = Object.entries(cfg.sounds ?? {})
+    .filter(([, id]) => id && (own || !isOwnSound(id)))
+    .map(([slot, id]) => `${SLOT_CODES[slot as SoundSlot]}${id}`);
+  if (sounds.length) p.set("o", sounds.join("."));
   if (edits.length) p.set("n", edits.map(encodeEdit).join("."));
   return p.toString();
 }
@@ -64,7 +77,7 @@ function decodeEdit(text: string): NoteEdit | null {
 
 export function shareURL(cfg: GeneratorConfig, edits: NoteEdit[] = []): string {
   const url = new URL(window.location.href);
-  url.search = encodeConfig(cfg, edits);
+  url.search = encodeConfig(cfg, edits, { own: false });
   url.hash = "";
   return url.toString();
 }
@@ -79,6 +92,7 @@ export function parseConfigFromURL(search?: string): { config: Partial<Generator
   if (s) out.style = s;
   const family = familyById(p.get("f"));
   if (family) out.family = family.id;
+  if (p.get("j") === "1") out.dj = true;
   const m = p.get("m");
   if (m && MODES.includes(m as ModeChoice)) out.mode = m as ModeChoice;
 
@@ -133,6 +147,17 @@ export function parseConfigFromURL(search?: string): { config: Partial<Generator
       if (id && Number.isFinite(db)) set[id] = Math.max(LEVEL_RANGE[0], Math.min(LEVEL_RANGE[1], Math.round(db * 10) / 10));
     }
     out.levels = set;
+  }
+
+  const sounds = p.get("o");
+  if (sounds) {
+    const set: Partial<Record<SoundSlot, string>> = {};
+    for (const item of sounds.split(".")) {
+      const slot = CODE_SLOTS[item[0]];
+      const id = item.slice(1);
+      if (slot && (OWN_ID.test(id) || SOUND_CHOICES[slot].some((c) => c.id === id))) set[slot] = id;
+    }
+    out.sounds = set;
   }
 
   const notes = p.get("n");

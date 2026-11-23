@@ -9,18 +9,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyseAudioFile } from "../lib/audio-analysis";
 import { player } from "../lib/audio/player";
-import { download, encodeMidi, encodeWav, renderLoop, renderTrack, stemsZip, type Range } from "../lib/audio/render";
+import { djToolsZip, download, encodeMidi, encodeWav, renderLoop, renderTrack, stemsZip, type Range } from "../lib/audio/render";
+import { camelot, encodeAiff, keyName, type Tags } from "../lib/audio/tags";
 import { sliceTrack } from "../lib/audio/slice";
 import type { ChannelId } from "../lib/audio/graph";
 import { DEFAULT_CONFIG, editPitch, generativeEngine, LENGTHS, newSeed } from "../lib/generative-engine";
 import { FAMILIES } from "../lib/groove/families";
 import { loopBars } from "../lib/groove/flow";
 import { commit, loadHistory, redo, saveHistory, startHistory, undo, type History, type Snapshot } from "../lib/history";
-import { NOTE_NAMES } from "../lib/labels";
+import { NOTE_NAMES, storeGenre } from "../lib/labels";
 import { neuralRiff } from "../lib/neural-engine";
 import { sampleBank } from "../lib/audio/samples";
+import { isOwnSound } from "../lib/audio/kits";
+import { addOwnSample, listOwnSamples, removeOwnSample, type OwnSample } from "../lib/audio/own-samples";
 import { loadSavedConfig, parseConfigFromURL, shareURL } from "../lib/share";
-import { LANES, type AudioFeatures, type GeneratorConfig, type Lane, type NoteEdit, type Track } from "../types";
+import { drawRoot, drawSetting, emptyTaste, learn, loadTaste, outcomeOf, pickFamily, saveTaste, type TakeFeatures } from "../lib/taste";
+import { LANES, type AudioFeatures, type GeneratorConfig, type Lane, type NoteEdit, type SoundSlot, type Track } from "../types";
 
 export type LoopMode = "four" | "eight" | "sixteen" | "track" | "section" | "off";
 export const LOOP_BARS: Partial<Record<LoopMode, number>> = { four: 4, eight: 8, sixteen: 16 };
@@ -38,14 +42,14 @@ function seconds(track: Track, r: Range) {
   return { start: r.startBar * barSec, end: (r.startBar + r.bars) * barSec };
 }
 
-export interface ExportFormat { bits: 16 | 24; rate: 44100 | 48000 }
+export interface ExportFormat { bits: 16 | 24; rate: 44100 | 48000; type: "wav" | "aiff" }
 const FORMAT_KEY = "soundxai.export.v1";
 function loadFormat(): ExportFormat {
   try {
     const raw = JSON.parse(localStorage.getItem(FORMAT_KEY) ?? "{}");
-    return { bits: raw.bits === 16 ? 16 : 24, rate: raw.rate === 44100 ? 44100 : 48000 };
+    return { bits: raw.bits === 16 ? 16 : 24, rate: raw.rate === 44100 ? 44100 : 48000, type: raw.type === "aiff" ? "aiff" : "wav" };
   } catch {
-    return { bits: 24, rate: 48000 };
+    return { bits: 24, rate: 48000, type: "wav" };
   }
 }
 
@@ -77,10 +81,16 @@ function initialState(): { history: History; fromLink: boolean } {
   return { history: startHistory({ config: tidy({ ...DEFAULT_CONFIG, ...loadSavedConfig() }), edits: [] }), fromLink };
 }
 
+/** Name, key with its Camelot number, tempo and seed: what a DJ sorts a folder by. */
 export function trackFileName(track: Track): string {
-  const { style, tempo, seed } = track.config;
+  const { style, tempo, seed, dj } = track.config;
   const name = track.family ? `groove-${track.family.id}` : style;
-  return `sound-x-ai-${name}-${NOTE_NAMES[track.root].replace("#", "s")}-${tempo}bpm-${seed}`;
+  const key = keyName(track.root, track.tonality).replace("#", "s");
+  return `sound-x-ai-${name}${dj ? "-dj" : ""}-${key}-${camelot(track.root, track.tonality)}-${tempo}bpm-${seed}`;
+}
+
+export function trackTags(track: Track, title: string): Tags {
+  return { title, bpm: track.bpm, key: keyName(track.root, track.tonality), camelot: camelot(track.root, track.tonality), genre: storeGenre(track.config.style) };
 }
 
 export function useStudio() {
@@ -102,12 +112,42 @@ export function useStudio() {
   const [copied, setCopied] = useState(false);
   const [locks, setLocks] = useState<Set<Lane>>(new Set());
   const [format, setFormatState] = useState<ExportFormat>(loadFormat);
+  const [ownSamples, setOwnSamples] = useState<OwnSample[]>([]);
 
   const ticket = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const trackRef = useRef<Track | null>(null);
   const [seeks, setSeeks] = useState(0);
   const latest = useRef(history);
+
+  // Learning from keeps and skips: off until the person turns it on, kept on this device.
+  const [taste, setTaste] = useState(loadTaste);
+  const tasteRef = useRef(taste);
+  const take = useRef<{ features: TakeFeatures; heard: number; touched: boolean; exported: boolean } | null>(null);
+  const storeTaste = useCallback((next: typeof taste) => {
+    tasteRef.current = next;
+    saveTaste(next);
+    setTaste(next);
+  }, []);
+  /** Record what leaving the current take says, if anything. */
+  const leaveTake = useCallback(() => {
+    const t = take.current;
+    take.current = null;
+    if (!t || !tasteRef.current.on) return;
+    const outcome = outcomeOf(t);
+    if (!outcome) return;
+    const event = { ...t.features, at: Date.now(), heard: Math.round(t.heard), outcome };
+    storeTaste({ ...tasteRef.current, events: [...tasteRef.current.events, event] });
+  }, [storeTaste]);
+  /** Only Groove takes count: Randomise only steers Groove. */
+  const beginTake = useCallback((c: GeneratorConfig) => {
+    take.current = c.style === "driving" && c.family
+      ? {
+          features: { family: c.family, tempo: c.tempo, root: c.rootPitch, energy: c.energy, valence: c.valence, density: c.density, variation: c.variation },
+          heard: 0, touched: false, exported: false,
+        }
+      : null;
+  }, []);
 
   /** Write the track for a config and hand it to the player. */
   const rebuild = useCallback(async (cfg: GeneratorConfig, ed: NoteEdit[], from?: number) => {
@@ -164,7 +204,11 @@ export function useStudio() {
   }, []);
 
   /** Every change goes through here, so every change can be undone. */
-  const change = useCallback((next: Snapshot, tag = "") => show(commit(latest.current, next, tag)), [show]);
+  const change = useCallback((next: Snapshot, tag = "") => {
+    // any change to a take is work on it; a new take calls beginTake after this
+    if (take.current) take.current.touched = true;
+    show(commit(latest.current, next, tag));
+  }, [show]);
 
   /** Change controls. The take stays the same, and the music updates as you move. */
   const update = useCallback((patch: Partial<GeneratorConfig>) => {
@@ -226,10 +270,12 @@ export function useStudio() {
     // a Groove stays in its family: Randomise is what changes the idea
     const family = config.style === "driving" ? trackRef.current?.family?.id ?? config.family : config.family;
     const next = { ...config, family, seed: newSeed(), laneSeeds: {}, pins: {} };
+    leaveTake();
     change({ config: next, edits: [] });
+    beginTake(next);
     setStatus(`New take #${next.seed}`);
     await rebuild(next, [], 0);
-  }, [config, change, rebuild, locks, rewriteUnlocked]);
+  }, [config, change, rebuild, locks, rewriteUnlocked, leaveTake, beginTake]);
 
   /**
    * Randomise is Groove only until the other styles have had the same work. It
@@ -240,24 +286,30 @@ export function useStudio() {
     player.unlock();
     if (locks.size) return rewriteUnlocked();
     const others = FAMILIES.filter((f) => f.id !== trackRef.current?.family?.id);
-    const family = others[Math.floor(Math.random() * others.length)];
-    const rnd = (lo: number, hi: number) => Math.round((lo + Math.random() * (hi - lo)) * 100) / 100;
+    // with learning on, lean towards what this person keeps; off, every draw is even
+    const learned = tasteRef.current.on ? learn(tasteRef.current.events) : emptyTaste();
+    const id = pickFamily(learned, others.map((f) => f.id));
+    const family = others.find((f) => f.id === id)!;
+    const draw = (key: "energy" | "valence" | "density" | "variation", lo: number, hi: number) =>
+      Math.round(drawSetting(learned, id, key, lo, hi) * 100) / 100;
     const next: GeneratorConfig = {
       ...config,
       style: "driving",
       family: family.id,
-      tempo: family.tempo[0] + Math.floor(Math.random() * (family.tempo[1] - family.tempo[0] + 1)),
-      energy: rnd(0.62, 0.85),
-      valence: rnd(0.12, 0.45),
-      density: rnd(0.5, 0.8),
-      variation: rnd(0.25, 0.55),
-      rootPitch: family.keys[Math.floor(Math.random() * family.keys.length)],
+      tempo: Math.min(family.tempo[1], Math.floor(drawSetting(learned, id, "tempo", family.tempo[0], family.tempo[1] + 1))),
+      energy: draw("energy", 0.62, 0.85),
+      valence: draw("valence", 0.12, 0.45),
+      density: draw("density", 0.5, 0.8),
+      variation: draw("variation", 0.25, 0.55),
+      rootPitch: drawRoot(learned, id, family.keys),
       mode: "auto",
       seed: newSeed(),
       laneSeeds: {},
       pins: {},
     };
+    leaveTake();
     change({ config: next, edits: [] });
+    beginTake(next);
     setStatus(`${family.name} in ${NOTE_NAMES[next.rootPitch]} at ${next.tempo} BPM`);
     if (!inBars(loopRef.current)) {
       loopRef.current = "eight";
@@ -265,7 +317,7 @@ export function useStudio() {
     }
     player.loop = true;
     await rebuild(next, [], 0);
-  }, [config, change, rebuild, locks, rewriteUnlocked]);
+  }, [config, change, rebuild, locks, rewriteUnlocked, leaveTake, beginTake]);
 
   const toggleLock = useCallback((lane: Lane) => {
     setLocks((now) => {
@@ -431,6 +483,7 @@ export function useStudio() {
     setStatus(label);
     try {
       await work(t);
+      if (take.current) take.current.exported = true;
     } catch (e) {
       setStatus(`Export failed: ${(e as Error).message}`);
     } finally {
@@ -439,15 +492,17 @@ export function useStudio() {
   }, []);
 
   const levels = () => latest.current.now.config.levels ?? {};
+  const encode = (audio: AudioBuffer, tags: Tags) => (format.type === "aiff" ? encodeAiff(audio, format.bits, tags) : encodeWav(audio, format.bits, tags));
   const loopName = (t: Track, r: Range) => `${trackFileName(t)}-bars${r.startBar + 1}-${r.startBar + r.bars}`;
 
-  const exportWav = useCallback(() => exporting("Rendering WAV", async (t) => {
+  const exportWav = useCallback(() => exporting("Rendering the mix", async (t) => {
     const audio = await renderTrack(t, sampleRate(), {
       audible: player.audible(), levels: levels(), rate: format.rate,
-      onProgress: (p) => setStatus(`Rendering WAV ${Math.round(p * 100)}%`),
+      onProgress: (p) => setStatus(`Rendering the mix ${Math.round(p * 100)}%`),
     });
-    download(encodeWav(audio, format.bits), `${trackFileName(t)}.wav`);
-    setStatus("WAV downloaded");
+    const name = trackFileName(t);
+    download(encode(audio, trackTags(t, name)), `${name}.${format.type === "aiff" ? "aif" : "wav"}`);
+    setStatus(`${format.type === "aiff" ? "AIFF" : "WAV"} downloaded, tagged ${trackTags(t, name).camelot} at ${t.bpm} BPM`);
   }), [exporting, format]);
 
   const exportLoopWav = useCallback(() => exporting("Rendering loop", async (t) => {
@@ -457,7 +512,8 @@ export function useStudio() {
       audible: player.audible(), levels: levels(), rate: format.rate,
       onProgress: (p) => setStatus(`Rendering loop ${Math.round(p * 100)}%`),
     });
-    download(encodeWav(audio, format.bits), `${loopName(t, r)}.wav`);
+    const name = loopName(t, r);
+    download(encode(audio, trackTags(t, name)), `${name}.${format.type === "aiff" ? "aif" : "wav"}`);
     setStatus(`Loop downloaded: ${r.bars} bars at ${t.bpm} BPM`);
   }), [exporting, format, loopRange]);
 
@@ -473,6 +529,37 @@ export function useStudio() {
     setStatus("Stems downloaded");
   }), [exporting, format, loopRange]);
 
+  // time heard on the current take, and what it said when the page closes
+  useEffect(() => {
+    if (tasteRef.current.on && !take.current) beginTake(latest.current.now.config);
+    const tick = setInterval(() => { if (take.current && player.playing) take.current.heard += 1; }, 1000);
+    addEventListener("pagehide", leaveTake);
+    return () => { clearInterval(tick); removeEventListener("pagehide", leaveTake); };
+  }, [leaveTake, beginTake]);
+
+  const setTasteOn = useCallback((on: boolean) => {
+    storeTaste({ ...tasteRef.current, on });
+    if (on && !take.current) beginTake(latest.current.now.config);
+    setStatus(on ? "Learning from what you keep and skip, in this browser only" : "Stopped learning. What it learned stays until you forget it");
+  }, [storeTaste, beginTake]);
+  const forgetTaste = useCallback(() => {
+    storeTaste({ ...tasteRef.current, events: [] });
+    setStatus("Forgot every keep and skip");
+  }, [storeTaste]);
+  const exportTaste = useCallback(() => {
+    download(new Blob([JSON.stringify(tasteRef.current.events, null, 1)], { type: "application/json" }), "sound-x-ai-taste.json");
+  }, []);
+
+  const exportDjTools = useCallback(() => exporting("Rendering DJ tools", async (t) => {
+    const name = trackFileName(t);
+    const zip = await djToolsZip(t, sampleRate(), name, peakBars(t, 16), {
+      bits: format.bits, rate: format.rate, levels: levels(), tags: (title) => trackTags(t, title),
+      onProgress: (p, what) => setStatus(`Rendering DJ tools ${Math.round(p * 100)}%, ${what}`),
+    });
+    download(zip, `${name}-dj-tools.zip`);
+    setStatus("DJ tools downloaded: drum loop, tops loop, the build, and the drums as MIDI");
+  }), [exporting, format]);
+
   const exportMidi = useCallback(async (loopOnly = false) => {
     const t = trackRef.current;
     if (!t) return;
@@ -480,8 +567,53 @@ export function useStudio() {
     if (loopOnly && !r) return setStatus("Choose a bar or section loop first");
     const part = r ? sliceTrack(t, r.startBar, r.bars) : t;
     download(await encodeMidi(part, player.audible()), `${r ? loopName(t, r) : trackFileName(t)}.mid`);
+    if (take.current) take.current.exported = true;
     setStatus("MIDI downloaded");
   }, [loopRange]);
+
+  // the producer's own sounds. One that isn't on this device (a session from another
+  // browser, or a deleted file) goes back to the family's sound rather than a stand-in.
+  useEffect(() => {
+    void listOwnSamples().then((list) => {
+      setOwnSamples(list);
+      const have = new Set(list.map((x) => x.id));
+      const sounds = latest.current.now.config.sounds ?? {};
+      const gone = Object.entries(sounds).filter(([, id]) => id && isOwnSound(id) && !have.has(id));
+      if (!gone.length) return;
+      const kept = Object.fromEntries(Object.entries(sounds).filter(([, id]) => !(id && isOwnSound(id) && !have.has(id))));
+      const { now } = latest.current;
+      show({ ...latest.current, now: { config: { ...now.config, sounds: kept }, edits: now.edits } });
+      void rebuild(latest.current.now.config, latest.current.now.edits);
+      setStatus(`${gone.length} of your own sound${gone.length > 1 ? "s isn't" : " isn't"} on this device, so the family's plays instead`);
+    });
+  }, [rebuild, show]);
+
+  /** Swap a sound for another recording, or back to the family's (no id). Kept through new takes. */
+  const setSound = useCallback((slot: SoundSlot, id?: string) => {
+    const sounds = { ...latest.current.now.config.sounds };
+    if (id) sounds[slot] = id; else delete sounds[slot];
+    update({ sounds });
+  }, [update]);
+
+  /** Keep a file of the producer's own in this browser and play it in `slot`. */
+  const addOwnSound = useCallback(async (slot: SoundSlot, file: File) => {
+    try {
+      const sample = await addOwnSample(file, slot === "kick");
+      setOwnSamples((list) => [...list.filter((x) => x.id !== sample.id), sample]);
+      setSound(slot, sample.id);
+      setStatus(`${sample.name} is your ${slot === "perc2" ? "second perc" : slot}. It stays in this browser.`);
+    } catch (e) {
+      setStatus((e as Error).message);
+    }
+  }, [setSound]);
+
+  const removeOwnSound = useCallback(async (id: string) => {
+    await removeOwnSample(id);
+    setOwnSamples((list) => list.filter((x) => x.id !== id));
+    const sounds = latest.current.now.config.sounds ?? {};
+    const kept = Object.fromEntries(Object.entries(sounds).filter(([, v]) => v !== id));
+    if (Object.keys(kept).length !== Object.keys(sounds).length) update({ sounds: kept });
+  }, [update]);
 
   /** A fader. It moves the sound at once, and is saved with the take. */
   const setLevel = useCallback((id: ChannelId, db: number) => {
@@ -507,8 +639,9 @@ export function useStudio() {
 
   return {
     config, edits, track, ready, loadProgress, playing, status, busy, loop, seeks, muted, soloed, source, copied,
-    locks, format, update, togglePlay, newTake, randomise, rerollLane, toggleNote, toggleLock, pinRiff, seek, cycleLoop, playFull,
-    toggleMute, toggleSolo, setLevel, setFormat, analyse, exportWav, exportLoopWav, exportStems, exportMidi, share,
+    locks, format, ownSamples, setSound, addOwnSound, removeOwnSound, update, togglePlay, newTake, randomise, rerollLane, toggleNote, toggleLock, pinRiff, seek, cycleLoop, playFull,
+    toggleMute, toggleSolo, setLevel, setFormat, analyse, exportWav, exportLoopWav, exportStems, exportMidi, exportDjTools, share,
+    taste, setTasteOn, forgetTaste, exportTaste,
     hasLoop: inBars(loop) || loop === "section",
     takes: history.takes, canUndo: history.past.length > 0, canRedo: history.future.length > 0,
     undo: undoChange, redo: redoChange, openTake,

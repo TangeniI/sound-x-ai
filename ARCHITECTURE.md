@@ -29,7 +29,8 @@ trained offline in NumPy and shipped as weights. Everything else runs in the bro
  ┌────────────────────┐  ┌───────────────────────┐   ┌────────────────────────┐
  │ lib/audio/player   │  │ lib/audio/render      │   │ UI: arrangement, roll, │
  │ lookahead scheduler│  │ OfflineAudioContext   │   │ mixer, neural heatmap, │
- │ loop, seek, mixer  │  │ WAV, stems, MIDI      │   │ master spectrum        │
+ │ loop, seek, mixer, │  │ WAV/AIFF, stems, MIDI │   │ master spectrum        │
+ │ MIDI out + clock   │  │ DJ tools, tags        │   │                        │
  └─────────┬──────────┘  └──────────┬────────────┘   └────────────────────────┘
            └───────────┬────────────┘
                        ▼
@@ -81,7 +82,8 @@ its curve covers four times full scale and is flat at the ends, which a test che
 is added only to the side signal, so the mono sum is the dry signal. A compressor's automatic
 makeup gain is worked out from the spec's formula and taken back off.
 
-Stems skip the master processing, so together they rebuild the unmastered mix.
+Stems keep the master's tone (the high-pass, mono lows and EQ) but skip its glue and ceiling,
+so together they rebuild the mix before compression.
 
 The tape echo sits at a dotted eighth with a high-pass, low-pass, saturation and a slow wow
 on the delay time. Its saturator is gain-compensated: without that the loop gain passes 1,
@@ -105,6 +107,10 @@ and the echo rings forever.
 | **Split the corpus by artist** | Splitting by riff or file leaks near-copies of a song into the test set. |
 | **GRU in NumPy, inference in TypeScript** | No ML runtime to ship or break, and the maths stays visible. |
 | **Fallbacks at every network edge** | A missing sample gets a stand-in, and a missing model gets a Markov chain. |
+| **DJ version wraps the track, it doesn't rewrite it** | The 176-bar body is the same notes moved 32 bars on; edits apply last, in the finished track's bars. |
+| **MIDI timed from the audio clock** | `getOutputTimestamp()` maps audio time to `performance.now()`, so notes and clock land with the speakers, not with the timer that queued them. |
+| **Your own samples by content hash** | Ids are a SHA-256 of the file, kept in IndexedDB; a share link drops them, since nobody else has the file. |
+| **Taste: Beta posteriors and Thompson sampling** | Small enough to explain and test, learns from a handful of takes, and explores families it hasn't heard. Scored on later takes than it learned from. |
 
 See the [model card](ml/MODEL_CARD.md) for the network and
 [`public/samples/SOURCES.md`](public/samples/SOURCES.md) for every recording.

@@ -3,9 +3,10 @@
  *
  * Offline bounce through the same graph and voices as live playback, so the
  * exported file is the mix you heard, muted parts included. The processing's
- * own delay is measured and trimmed, so bar 1 is the first sample. Stems keep the sidechain pump, because the
- * kick still runs through the graph; only its channel strip is muted. They skip
- * the master processing, so together they rebuild the unmastered mix.
+ * own delay is measured and trimmed, so bar 1 is the first sample. Stems keep the
+ * sidechain pump, because the kick still runs through the graph; only its channel
+ * strip is muted. They keep the master's tone but not its compression or ceiling,
+ * so together they rebuild the mix as it sounds before the master's dynamics.
  *
  * A loop is rendered twice in a row and the second pass kept, so what rings over
  * from its end is already at its start, as it will be when it repeats in a DAW.
@@ -14,6 +15,7 @@
 import type { NoteEvent, Track } from "../../types";
 import { sliceTrack, stemsFor, stemTrack } from "./slice";
 import { makeZip, type ZipEntry } from "../zip";
+import { chunk, id3, pcm, riffInfo, type Tags } from "./tags";
 import { applyMix, buildGraph, CHANNELS, setChannel, type ChannelId } from "./graph";
 import { trackSamples } from "./kits";
 import { sampleBank } from "./samples";
@@ -161,45 +163,64 @@ export async function stemsZip(
   return makeZip(files);
 }
 
-/** Encode a buffer as PCM WAV: 24-bit, or 16-bit with triangular dither. */
-export function encodeWav(buffer: AudioBuffer, bits: 16 | 24 = 24): Blob {
+/**
+ * Tools for a DJ to layer in a set, not finished tracks: the drums of the peak as a
+ * loop, the same without the kick, and the build into the first drop as one hit.
+ * The rumble stays out, so they sit over another record's low end.
+ */
+export async function djToolsZip(
+  track: Track, sampleRate: number, name: string, peak: Range,
+  { bits = 24, rate, levels, tags, onProgress = () => {} }: { bits?: 16 | 24; rate?: number; levels?: RenderOptions["levels"]; tags: (title: string) => Tags; onProgress?: (p: number, what: string) => void },
+): Promise<Blob> {
+  const drums = new Set<ChannelId>(["drums", "perc"]);
+  const noKick = { ...track, notes: track.notes.map((n) => (n.instrument === "drums" && (n.pitch === 35 || n.pitch === 36) ? { ...n, velocity: 0 } : n)) };
+  const build = track.sections.find((s) => s.kind === "build");
+  const jobs: { file: string; render: (p: (x: number) => void) => Promise<AudioBuffer> }[] = [
+    { file: `drums-${peak.bars}bars`, render: (p) => renderLoop(track, peak.startBar, peak.bars, sampleRate, { audible: drums, levels, rate, onProgress: p }) },
+    { file: `tops-${peak.bars}bars`, render: (p) => renderLoop(noKick, peak.startBar, peak.bars, sampleRate, { audible: drums, levels, rate, onProgress: p }) },
+  ];
+  if (build) {
+    jobs.push({
+      file: `build-${build.bars}bars`,
+      // the build and the downbeat it lands on, with its tail
+      render: (p) => renderTrack(sliceTrack(track, build.startBar, build.bars + 1), sampleRate, { levels, rate, onProgress: p }),
+    });
+  }
+  const files: ZipEntry[] = [];
+  for (const [i, job] of jobs.entries()) {
+    const audio = await job.render((p) => onProgress((i + p) / jobs.length, job.file));
+    const title = `${name}-${job.file}`;
+    files.push({ name: `${name}-dj-tools/${title}.wav`, data: new Uint8Array(await encodeWav(audio, bits, tags(title)).arrayBuffer()) });
+  }
+  const drumsOnly = sliceTrack({ ...track, notes: track.notes.filter((n) => n.instrument === "drums" || n.instrument === "perc") }, peak.startBar, peak.bars);
+  files.push({ name: `${name}-dj-tools/${name}-drums-${peak.bars}bars.mid`, data: new Uint8Array(await (await encodeMidi(drumsOnly)).arrayBuffer()) });
+  return makeZip(files);
+}
+
+/** Encode a buffer as PCM WAV: 24-bit, or 16-bit with triangular dither. Tags add tempo and key for DJ software. */
+export function encodeWav(buffer: AudioBuffer, bits: 16 | 24 = 24, tags?: Tags): Blob {
   const channels = buffer.numberOfChannels;
   const rate = buffer.sampleRate;
-  const frames = buffer.length;
-  const bytes = bits / 8;
-  const align = channels * bytes;
-  const size = frames * align;
-  const ab = new ArrayBuffer(44 + size);
-  const view = new DataView(ab);
-  const text = (at: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(at + i, s.charCodeAt(i)); };
-
-  text(0, "RIFF"); view.setUint32(4, 36 + size, true); text(8, "WAVE");
-  text(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
-  view.setUint16(22, channels, true); view.setUint32(24, rate, true);
-  view.setUint32(28, rate * align, true); view.setUint16(32, align, true);
-  view.setUint16(34, bits, true); text(36, "data"); view.setUint32(40, size, true);
-
-  const data: Float32Array[] = [];
-  for (let c = 0; c < channels; c++) data.push(buffer.getChannelData(c));
-  let at = 44;
-  for (let i = 0; i < frames; i++) {
-    for (let c = 0; c < channels; c++) {
-      const x = data[c][i];
-      if (bits === 24) {
-        // far below anything audible, so 24-bit needs no dither
-        const v = Math.max(-0x800000, Math.min(0x7fffff, Math.round(x * 0x7fffff)));
-        view.setUint8(at, v & 0xff);
-        view.setUint8(at + 1, (v >> 8) & 0xff);
-        view.setUint8(at + 2, (v >> 16) & 0xff);
-      } else {
-        // one LSB of noise turns rounding distortion on fades into steady hiss
-        const dither = x === 0 ? 0 : Math.random() - Math.random();
-        view.setInt16(at, Math.max(-0x8000, Math.min(0x7fff, Math.round(x * 0x7fff + dither))), true);
-      }
-      at += bytes;
-    }
-  }
-  return new Blob([view], { type: "audio/wav" });
+  const align = channels * (bits / 8);
+  const fmt = new Uint8Array(16);
+  const f = new DataView(fmt.buffer);
+  f.setUint16(0, 1, true); // PCM
+  f.setUint16(2, channels, true);
+  f.setUint32(4, rate, true);
+  f.setUint32(8, rate * align, true);
+  f.setUint16(12, align, true);
+  f.setUint16(14, bits, true);
+  const parts = [
+    chunk("fmt ", fmt, true),
+    chunk("data", pcm(buffer, bits, true), true),
+    ...(tags ? [chunk("LIST", riffInfo(tags), true), chunk("id3 ", id3(tags), true)] : []),
+  ];
+  const head = new Uint8Array(12);
+  const h = new DataView(head.buffer);
+  head.set([0x52, 0x49, 0x46, 0x46], 0); // RIFF
+  h.setUint32(4, 4 + parts.reduce((n, p) => n + p.length, 0), true);
+  head.set([0x57, 0x41, 0x56, 0x45], 8); // WAVE
+  return new Blob([head, ...parts] as BlobPart[], { type: "audio/wav" });
 }
 
 export function download(blob: Blob, filename: string): void {

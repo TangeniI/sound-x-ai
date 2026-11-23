@@ -68,8 +68,8 @@ export const HATS: Record<string, { closed: string; open: string }> = {
 
 /* ─────────────────────── claps and snares ─────────────────────────── */
 
-// No snare recording ships, so each is built as a producer would layer one:
-// a short body, the crack, and some noise on top.
+// Most are built as a producer would layer one: a short body, the crack, and some
+// noise on top. The last four start from a recorded snare.
 const SNARE = {
   crack: [
     { id: "rim_909", gain: 0.75, rate: 0.86, len: 0.09 },
@@ -95,6 +95,22 @@ const SNARE = {
     { id: "clap_hands", gain: 0.85 },
     { id: "clap_808", gain: 0.4, rate: 1.08, delay: 0.011 },
     { id: "rim_909", gain: 0.3, rate: 0.9, len: 0.06 },
+  ],
+  snap: [
+    { id: "snare_909", gain: 0.85 },
+    { id: "clap_909", gain: 0.35, delay: 0.004, hp: 900 },
+  ],
+  pinched: [
+    { id: "snare_909_b", gain: 0.9, rate: 1.04 },
+    { id: "rim_909", gain: 0.3, len: 0.05 },
+  ],
+  eight: [
+    { id: "snare_808", gain: 0.9 },
+    { id: "rim_808", gain: 0.25, len: 0.05 },
+  ],
+  room: [
+    { id: "snare_real", gain: 0.8, len: 0.35 },
+    { id: "clap_hands", gain: 0.3, delay: 0.006, hp: 1000 },
   ],
 } satisfies Record<string, Layer[]>;
 
@@ -129,7 +145,7 @@ export const FAMILIES: Family[] = [
       perc: ["perc_tap", "rim_808"], percTone: 4200, stab: { open: 1500, rest: 360 },
       trim: { stab: 1.67, perc: 0.6 },
     }),
-    alts: [{}, { snare: SNARE.crack, hatC: ["hat_raw", "hat_808_c"] }],
+    alts: [{}, { snare: SNARE.snap, hatC: ["hat_raw", "hat_808_c"] }],
   },
   {
     id: "floor", name: "Rolling Floor", about: "The low end is the hook, with one late clap",
@@ -211,7 +227,7 @@ export const FAMILIES: Family[] = [
       sends: { stab: [0.3, 0.6], lead: [0.2, 0.3], perc: [0.15, 0.2] },
       trim: { stab: 1.8, perc: 0.55 },
     }),
-    alts: [{}, { snare: SNARE.hands, hatC: ["hat_808_c", "hat_raw"], hatO: "hat_808_o" }],
+    alts: [{}, { snare: SNARE.room, hatC: ["hat_808_c", "hat_raw"], hatO: "hat_808_o" }],
   },
   {
     id: "hands", name: "Hand to Hand", about: "Hands and skins in call and answer",
@@ -238,7 +254,7 @@ export const FAMILIES: Family[] = [
       sends: { stab: [0.3, 0.2], lead: [0.2, 0.2], perc: [0.18, 0.12] },
       trim: { perc: 0.64 },
     }),
-    alts: [{}, { perc: ["perc_tap", "rim_909"], snare: SNARE.tight }],
+    alts: [{}, { perc: ["perc_tap", "rim_909"], snare: SNARE.pinched }],
   },
   {
     id: "wire", name: "Live Wire", about: "A squared 808 line that stays on one note",
@@ -266,7 +282,7 @@ export const FAMILIES: Family[] = [
       bass: { sub: 0.3, decay: 0.05, body: { id: "perc_blip", gain: 0.6, tone: 240, rate: 0.8 } },
       trim: { lead: 0.98, perc: 0.5 },
     }),
-    alts: [{}, { clap: ["clap_808", "clap_909"], snare: SNARE.body }],
+    alts: [{}, { clap: ["clap_808", "clap_909"], snare: SNARE.eight }],
   },
   {
     id: "concrete", name: "Concrete", about: "A scrape chopped into the groove, with a huge snare",
@@ -429,7 +445,7 @@ export const FAMILIES: Family[] = [
       perc: ["perc_tap", "perc_blip"], percTone: 3600,
       trim: { lead: 1.3, perc: 0.5 },
     }),
-    alts: [{}, { snare: SNARE.crack, hatO: "hat_808_o" }],
+    alts: [{}, { snare: SNARE.snap, hatO: "hat_808_o" }],
   },
 ];
 

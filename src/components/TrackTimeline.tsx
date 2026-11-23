@@ -16,6 +16,8 @@ import type { ChannelId } from "../lib/audio/graph";
 import { player } from "../lib/audio/player";
 import { LANE_COLOR, LANE_LABEL } from "../lib/labels";
 import { LEVEL_RANGE } from "../lib/share";
+import { Sounds } from "./Sounds";
+import { TastePanel } from "./TastePanel";
 import type { Lane, NoteEvent, Track } from "../types";
 
 const VIEW_BARS = 8;
@@ -328,6 +330,9 @@ export default function TrackTimeline({ studio }: { studio: Studio }) {
           );
         })}
       </div>
+
+      <Sounds studio={studio} />
+      <TastePanel studio={studio} />
     </section>
   );
 }

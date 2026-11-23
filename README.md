@@ -21,17 +21,22 @@ real recordings and 2 measured rooms, with the same signal path for live playbac
 
 - Press play and Groove opens on eight bars at the peak. Full track plays the arrangement, up to five minutes.
 - Randomise a Groove: it picks a family, then varies it within that family's limits.
+- Turn on Taste, and Randomise learns which families and settings you keep and skip. It stays in your browser (see [Learning your taste](#learning-your-taste)).
 - Undo, redo and go back to your last 30 takes, which survive a reload.
-- Pick from six styles: Groove, Hypnotic, Percussive, Raw, Dub and Acid.
+- Pick from six styles: Groove, Hypnotic, Percussive, Raw, Dub and Acid. Each shows the Beatport shelf it belongs on (Peak Time / Driving, or Raw / Deep / Hypnotic), and files carry it as their genre.
 - See every layer enter and leave on one screen, and click to play from any bar.
 - Change energy, light, density and key as it plays, without stopping it.
 - Mute, solo, re-roll or lock each part. With a part locked, New take and Randomise rewrite only the others.
 - Set each part's level, and the levels travel in share links.
+- Swap any drum sound for another recording, or drop in your own. Your own files stay in this browser and out of share links, and your own kick is measured so it's tuned to the key.
 - Click the piano roll to add or remove a note everywhere that pattern repeats. Shift-click changes one bar.
 - Outside Groove, watch the model's note probabilities, then hold a note and it rewrites what follows.
 - Drop in an audio file to set the tempo, key, energy and light. Nothing leaves your device.
 - Loop 4, 8 or 16 bars, and export the loop as a WAV that repeats without a click, as stems or as MIDI.
-- Export the whole track as a WAV, seven stems in one zip (the kick on its own) or MIDI, at 24 or 16-bit and 48 or 44.1 kHz, without the parts you muted. Or share a link that reopens the exact track.
+- Export the whole track as WAV or AIFF, seven stems in one zip (the kick on its own) or MIDI, at 24 or 16-bit and 48 or 44.1 kHz, without the parts you muted. Files are tagged with tempo, key and Camelot number for Rekordbox, Traktor and Serato. Or share a link that reopens the exact track.
+- Make a DJ version of a Groove: about seven minutes, with 32 bars of drums alone at each end (kick and hats first) and the rumble held back there, so it mixes in and out.
+- Export DJ tools: the peak's drums as a 16-bar loop, the same without the kick, and the build into the first drop, as tagged WAVs plus the drums as MIDI.
+- Play the track on your own instruments over Web MIDI, with clock, start, stop and song position so a DAW follows (Chrome, Edge, Firefox).
 
 ## How Groove is built
 
@@ -73,7 +78,8 @@ from them is used.
 | **Drums** | Original TR-808 recordings, Roland TR-8 hardware, hand claps, layered |
 | **Percussion** | 808 toms tuned to the key, rims, shaker, a real anvil and brake drum |
 | **Bass** | The tail of an original TR-808 kick for the sub, with a short filtered drum or impact for the knock |
-| **Stabs and atmosphere** | Short, dark TX81Z stabs on bare intervals, a struck gong an octave down |
+| **Chords** | A recorded Steinway grand by default; an upright piano, a pipe organ or a vibraphone instead |
+| **Atmosphere** | A struck gong an octave down |
 | **Sequence** | Yamaha TX81Z hardware through a fast filter |
 | **Space** | Convolution reverb measured in Oxford's medieval Divinity School and York Guildhall |
 | **Rumble** | A long 808 kick through that hall, driven, filtered to the sub and ducked on every hit |
@@ -105,6 +111,25 @@ The corpus is 80s and 90s dance and pop, not dark groove, so the model is given 
 job: the sequence line outside Groove, and the 303 line in Acid. Everything else is written
 by rules, in [`generative-engine.ts`](src/lib/generative-engine.ts) and [`groove/`](src/lib/groove).
 
+## Learning your taste
+
+Groove itself has no machine learning. Taste adds a small, honest piece of it: preference
+learning from how you use the studio. It's off until you turn it on, and nothing leaves the browser.
+
+- **What counts.** A Groove take is *kept* when you export it, change it, or play it for 45
+  seconds, and *skipped* when you move on sooner. A take you barely heard counts for nothing.
+- **The model** ([`taste.ts`](src/lib/taste.ts)): a Beta posterior over each family's keep rate,
+  sampled by Thompson sampling to choose the family, plus the mean and spread of the settings
+  you kept in it. One pick in five stays random, so it never closes in on itself.
+- **The test.** It trains on your earlier takes and is scored on the latest 30%, which it
+  never saw, against a baseline that predicts your overall keep rate (log loss and AUC).
+  The panel shows the result once there are about 50 takes.
+
+The [tests](src/lib/taste.test.ts) check it on simulated listeners. With nothing learned, it
+picks every family evenly. It leans towards a simulated listener's favourites. It beats the
+baseline on held-out takes. And it finds nothing in coin flips. It hasn't been measured on real people yet:
+that needs real use, and a blind vote before and after.
+
 ## Audio analysis
 
 [`audio-analysis.ts`](src/lib/audio-analysis.ts) is plain DSP with no ML library:
@@ -130,7 +155,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and signal path.
 ```bash
 npm install
 npm run dev      # http://localhost:5173
-npm test         # 215 tests
+npm test         # 255 tests
 npm run build    # typecheck + production build
 ```
 
@@ -140,24 +165,31 @@ npm run build    # typecheck + production build
 src/
 ├── App.tsx                   layout and keyboard shortcuts
 ├── hooks/useStudio.ts        all studio state and actions
+├── hooks/useMidi.ts          MIDI ports and settings
 ├── components/
 │   ├── Overview.tsx          the whole arrangement on one screen
 │   ├── TrackTimeline.tsx     pattern editor, mixer strips
 │   ├── Spectrum.tsx          analyser on the master
 │   ├── NeuralPanel.tsx       live view of the riff model
 │   ├── Controls.tsx          style, sliders, length, key
-│   ├── Transport.tsx         play, position, loop, export
+│   ├── Transport.tsx         play, position, loop, export, MIDI menu
+│   ├── Sounds.tsx            swap drum sounds, add your own
+│   ├── TastePanel.tsx        opt-in taste learning and its held-out score
+│   ├── MidiPanel.tsx         Web MIDI output and clock
 │   └── AudioDropzone, Credits
 └── lib/
     ├── generative-engine.ts  writes the track
-    ├── groove/               Groove's families, part choice, flow and composer
+    ├── groove/               Groove's families, part choice, flow, composer and DJ version
     ├── writing.ts            randomness and note helpers both composers share
     ├── history.ts            undo, redo, takes
     ├── neural-engine.ts      GRU forward pass and sampling
     ├── audio-analysis.ts     tempo and key detection
     ├── share.ts              permalinks
+    ├── taste.ts              preference learning from keeps and skips
+    ├── midi.ts               MIDI messages, clock and song position
     ├── zip.ts                stems zip, no dependency
-    └── audio/                samples, kits, graph, voices, player, render, loop slices and stems
+    └── audio/                samples, kits, sound swaps, your own samples, graph, voices, player,
+                              render, loop slices, stems, DJ tools, WAV/AIFF tags
 ml/                           corpus builder, trainer, results, model card
 scripts/build_samples.py      builds the sample pack
 public/samples/               the recordings and their credits

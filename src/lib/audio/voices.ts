@@ -10,7 +10,7 @@ import type { Automation, NoteEvent, Track } from "../../types";
 import { softClip, type ChannelId, type Graph } from "./graph";
 import type { SampleBank } from "./samples";
 import { hitNoise, PERC } from "../writing";
-import { FM, pickZone, SUB, TOM_ROOT, type Kit } from "./kits";
+import { chordOf, pickZone, SUB, TOM_ROOT, type Kit } from "./kits";
 
 /** Everything a voice needs. Live and offline each build their own. */
 export interface Runtime {
@@ -336,9 +336,10 @@ function stab(rt: Runtime, n: NoteEvent, time: number): void {
   const f = filtered(rt, graph.inputs.stab, time, peak * open, rest * open, Math.min(0.2, dur), 0.8);
   const body = decaying(rt, f, time, dur * 0.4);
   const offsets = n.chord ?? [0];
+  const instrument = chordOf(kit);
   for (const off of offsets) {
-    const z = pickZone(FM, n.pitch + off);
-    hit(rt, bank.get(z.id), body, time, { gain: (0.42 * v * (kit.trim?.stab ?? 1)) / Math.sqrt(offsets.length), rate: z.rate, dur, release: 0.12, attack: 0.004, lane: "stab" });
+    const z = pickZone(instrument.zones, n.pitch + off);
+    hit(rt, bank.get(z.id), body, time, { gain: (0.42 * v * instrument.gain * (kit.trim?.stab ?? 1)) / Math.sqrt(offsets.length), rate: z.rate, dur, release: 0.12, attack: 0.004, lane: "stab" });
   }
   // the echo hears the darkened, decayed stab, not the raw sample
   const [hall, echo] = kit.sends.stab;

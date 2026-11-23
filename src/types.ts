@@ -23,6 +23,9 @@ export type Lane = "drums" | "perc" | "bass" | "stab" | "lead" | "pad";
 export type Instrument = Lane | "fx";
 /** Mixer channels: the lanes, the rumble under the kick, and effects. */
 export type ChannelId = Lane | "rumble" | "fx";
+/** The drum sounds a producer can swap for another recording or one of their own. */
+export type SoundSlot = "kick" | "snare" | "clap" | "rim" | "hat" | "open" | "perc" | "perc2" | "chord";
+export const SOUND_SLOTS: SoundSlot[] = ["kick", "snare", "clap", "rim", "hat", "open", "perc", "perc2", "chord"];
 export const LANES: Lane[] = ["lead", "pad", "stab", "bass", "perc", "drums"];
 
 /** A single scheduled note. */
@@ -64,6 +67,10 @@ export interface GeneratorConfig {
   laneSeeds:  Partial<Record<Lane, number>>; // re-rolled single lanes
   pins:       Record<number, number>; // riff step → vocab token held by the user
   levels?:    Partial<Record<ChannelId, number>>; // fader positions in dB, 0 if not set
+  /** Swapped sounds: a recording's id, or `user:…` for one kept on this device. */
+  sounds?:    Partial<Record<SoundSlot, string>>;
+  /** Groove only: the DJ version, five minutes of track inside 32 bars of drums at each end. */
+  dj?:        boolean;
 }
 
 /** One piano-roll edit, kept apart from the notes so it survives regeneration. */

@@ -1,17 +1,19 @@
 /**
  * Transport.tsx
  *
- * The bar that stays on screen: play, new take, position, loop, level, export.
+ * The bar that stays on screen: play, new take, position, loop, level, MIDI out, export.
  * Position and meters are drawn from the audio clock in their own loop, so the
  * rest of the app doesn't re-render as the track plays. On a phone, everything
  * but Play and Export folds into a "More" menu.
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useMidi } from "../hooks/useMidi";
 import { LOOP_BARS, type LoopMode, type Studio } from "../hooks/useStudio";
 import { player } from "../lib/audio/player";
 import { familyOf } from "../lib/groove/parts";
 import { clock, NOTE_NAMES, SECTION_LABEL, STYLES } from "../lib/labels";
+import { MidiPanel } from "./MidiPanel";
 
 const LOOP_LABEL: Record<LoopMode, string> = {
   four: "Loop 4 bars", eight: "Loop 8 bars", sixteen: "Loop 16 bars", track: "Loop track", section: "Loop section", off: "Loop off",
@@ -19,7 +21,9 @@ const LOOP_LABEL: Record<LoopMode, string> = {
 
 export default function Transport({ studio }: { studio: Studio }) {
   const { track, ready, loadProgress, playing, status, busy, loop, copied } = studio;
-  const [menuOpen, setMenuOpen] = useState<"export" | "more" | "takes" | null>(null);
+  const [menuOpen, setMenuOpen] = useState<"export" | "more" | "takes" | "midi" | null>(null);
+  const midi = useMidi();
+  const fileType = studio.format.type === "aiff" ? "AIFF" : "WAV";
   const bar = useRef<HTMLSpanElement>(null);
   const section = useRef<HTMLSpanElement>(null);
   const scrub = useRef<HTMLInputElement>(null);
@@ -64,7 +68,7 @@ export default function Transport({ studio }: { studio: Studio }) {
   }, [menuOpen]);
 
   const run = (fn: () => void) => () => { setMenuOpen(null); fn(); };
-  const toggle = (name: "export" | "more" | "takes") => () => setMenuOpen((o) => (o === name ? null : name));
+  const toggle = (name: "export" | "more" | "takes" | "midi") => () => setMenuOpen((o) => (o === name ? null : name));
   const takeList = studio.takes.map((take) => {
     const { seed, style, rootPitch, tempo } = take.config;
     const current = seed === studio.config.seed;
@@ -113,6 +117,17 @@ export default function Transport({ studio }: { studio: Studio }) {
           {LOOP_LABEL[loop]}
         </button>
         <button className="wide-only" onClick={studio.share} disabled={!ready}>{copied ? "Copied" : "Share"}</button>
+        <div className="menu-wrap midi-wrap wide-only">
+          <button aria-haspopup="menu" aria-expanded={menuOpen === "midi"} onClick={toggle("midi")} className={midi.port ? "active" : ""}>
+            {midi.port ? "MIDI on" : "MIDI"}
+          </button>
+          {menuOpen === "midi" && (
+            <div className="menu export midi" role="menu">
+              <span className="menu-head">MIDI out</span>
+              <MidiPanel midi={midi} />
+            </div>
+          )}
+        </div>
         <div className="menu-wrap export-wrap">
           <button aria-haspopup="menu" aria-expanded={menuOpen === "export"} onClick={toggle("export")} disabled={!ready || busy}>
             {busy ? "Working…" : "Export"}
@@ -120,13 +135,14 @@ export default function Transport({ studio }: { studio: Studio }) {
           {menuOpen === "export" && (
             <div className="menu export" role="menu">
               <span className="menu-head">{studio.hasLoop ? `This loop${LOOP_BARS[loop] ? `, ${LOOP_BARS[loop]} bars` : ""}` : "Loop: turn on a bar or section loop"}</span>
-              <button role="menuitem" disabled={!studio.hasLoop} onClick={run(studio.exportLoopWav)}>Loop (WAV)</button>
+              <button role="menuitem" disabled={!studio.hasLoop} onClick={run(studio.exportLoopWav)}>Loop ({fileType})</button>
               <button role="menuitem" disabled={!studio.hasLoop} onClick={run(() => studio.exportStems(true))}>Loop stems (zip)</button>
               <button role="menuitem" disabled={!studio.hasLoop} onClick={run(() => studio.exportMidi(true))}>Loop notes (MIDI)</button>
               <span className="menu-head">Whole track</span>
-              <button role="menuitem" onClick={run(studio.exportWav)}>Full mix (WAV)</button>
+              <button role="menuitem" onClick={run(studio.exportWav)}>Full mix ({fileType})</button>
               <button role="menuitem" onClick={run(() => studio.exportStems(false))}>Stems (zip)</button>
               <button role="menuitem" onClick={run(() => studio.exportMidi(false))}>Notes (MIDI)</button>
+              {track?.family && <button role="menuitem" onClick={run(studio.exportDjTools)} title="Drum loop, tops loop and the build, to layer in a set">DJ tools (zip)</button>}
               <div className="format" role="group" aria-label="File format">
                 {([24, 16] as const).map((bits) => (
                   <button key={bits} aria-pressed={studio.format.bits === bits} onClick={() => studio.setFormat({ ...studio.format, bits })}>{bits}-bit</button>
@@ -134,9 +150,13 @@ export default function Transport({ studio }: { studio: Studio }) {
                 {([48000, 44100] as const).map((rate) => (
                   <button key={rate} aria-pressed={studio.format.rate === rate} onClick={() => studio.setFormat({ ...studio.format, rate })}>{rate / 1000} kHz</button>
                 ))}
+                {(["wav", "aiff"] as const).map((type) => (
+                  <button key={type} aria-pressed={studio.format.type === type} onClick={() => studio.setFormat({ ...studio.format, type })}
+                    title={type === "aiff" ? "DJ software reads AIFF tags most reliably" : undefined}>{type.toUpperCase()}</button>
+                ))}
               </div>
               <p className="licence">
-                Stems: kick, clap and snare, hats, percussion, low end, music and effects, all the same length.
+                Files carry the tempo, key and Camelot number for DJ software. Stems are WAV: kick, clap and snare, hats, percussion, low end, music and effects, all the same length.
                 The recordings are CC0 and the two reverb rooms CC BY 4.0 (see Sounds &amp; credits).
                 Sound × AI claims no rights in what you export. Many stores now refuse tracks made wholly
                 by generators, so make it your own before you release it. This isn't legal advice.

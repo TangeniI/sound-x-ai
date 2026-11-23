@@ -21,6 +21,18 @@ const LOOKAHEAD_HIDDEN = 2.2; // background tabs throttle timers to about 1 Hz
 
 export interface LoopRange { start: number; end: number }
 
+/** Something that follows playback on the audio clock, such as MIDI out. */
+export interface PlaybackListener {
+  /** Playback starts, or jumps, at `time` from `pos` seconds into the track. */
+  start(time: number, pos: number, track: Track): void;
+  /** Events are queued up to `until`, at this track's tempo. */
+  advance(until: number, track: Track): void;
+  /** An audible note, at the audio time it sounds. */
+  note(n: NoteEvent, time: number): void;
+  /** Playback stops or is cut, at `time`. */
+  stop(time: number): void;
+}
+
 export class Player {
   ctx: AudioContext | null = null;
   private graph: Graph | null = null;
@@ -42,6 +54,9 @@ export class Player {
   private soloed = new Set<ChannelId>();
   private levels: Partial<Record<ChannelId, number>> = {};
   private rate = 0;
+  private heard = new Set<ChannelId>(CHANNELS);
+  private monitor: GainNode | null = null;
+  listener: PlaybackListener | null = null;
   playing = false;
   loop = true;
   range: LoopRange | null = null;
@@ -73,6 +88,10 @@ export class Player {
       this.analyser = ctx.createAnalyser();
       this.analyser.fftSize = 8192; // enough to tell the kick from the sub
       this.analyser.smoothingTimeConstant = 0.55;
+      // through a switch of its own, so MIDI out can play without the browser's sound
+      this.graph.out.disconnect();
+      this.monitor = ctx.createGain();
+      this.graph.out.connect(this.monitor).connect(ctx.destination);
       this.graph.out.connect(this.analyser);
       this.wave = new Float32Array(this.analyser.fftSize);
       this.bins = new Float32Array(this.analyser.frequencyBinCount);
@@ -181,6 +200,7 @@ export class Player {
     this.passStart = [{ time: when, pos }];
     this.cursor = this.indexAt(pos);
     this.restoreAutomation(pos, when);
+    this.listener?.start(when, pos, this.track!);
     const g = this.graph!;
     // after the fade-out that silence() queued, not over the top of it
     g.out.gain.setTargetAtTime(OUTPUT_GAIN, when - 0.012, 0.004);
@@ -233,12 +253,21 @@ export class Player {
       this.restoreAutomation(start, wrapAt);
     }
     this.queuedUntil = Math.max(this.queuedUntil, horizon);
+    this.listener?.advance(horizon, this.track!);
   }
 
   private dispatch(e: Scheduled, time: number): void {
     if (!this.rt) return;
-    if (e.note) trigger(this.rt, e.note, time);
-    else if (e.auto) automate(this.rt, e.auto, time);
+    if (e.note) {
+      trigger(this.rt, e.note, time);
+      if (this.listener && this.heard.has(e.note.instrument as ChannelId)) this.listener.note(e.note, time);
+    } else if (e.auto) automate(this.rt, e.auto, time);
+  }
+
+  /** Whether the browser's own sound plays. MIDI out goes on either way. */
+  setSpeaker(on: boolean): void {
+    const ctx = this.context();
+    this.monitor?.gain.setTargetAtTime(on ? 1 : 0, ctx.currentTime, 0.01);
   }
 
   /** Current position in seconds, read from the audio clock. */
@@ -294,6 +323,7 @@ export class Player {
       this.rt.openHat = undefined;
       this.rt.lastBassRate = undefined;
     }
+    this.listener?.stop(now);
   }
 
   stop(): void {
@@ -308,6 +338,7 @@ export class Player {
   /* ─────────────────────────── mute + solo ────────────────────────── */
 
   private applyStrips(): void {
+    this.heard = this.audible();
     const g = this.graph;
     if (!g) return;
     const now = this.context().currentTime;
