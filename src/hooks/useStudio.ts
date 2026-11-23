@@ -23,6 +23,7 @@ import { sampleBank } from "../lib/audio/samples";
 import { isOwnSound } from "../lib/audio/kits";
 import { addOwnSample, listOwnSamples, removeOwnSample, type OwnSample } from "../lib/audio/own-samples";
 import { loadSavedConfig, parseConfigFromURL, shareURL } from "../lib/share";
+import { track as count, trackOnce } from "../lib/analytics";
 import { drawRoot, drawSetting, emptyTaste, learn, loadTaste, outcomeOf, pickFamily, saveTaste, type TakeFeatures } from "../lib/taste";
 import { LANES, type AudioFeatures, type GeneratorConfig, type Lane, type NoteEdit, type SoundSlot, type Track } from "../types";
 
@@ -41,6 +42,8 @@ function seconds(track: Track, r: Range) {
   const barSec = track.stepSec * 16;
   return { start: r.startBar * barSec, end: (r.startBar + r.bars) * barSec };
 }
+
+export interface DragFile { kind: "MIDI" | "WAV"; name: string; type: string; url: string }
 
 export interface ExportFormat { bits: 16 | 24; rate: 44100 | 48000; type: "wav" | "aiff" }
 const FORMAT_KEY = "soundxai.export.v1";
@@ -242,6 +245,7 @@ export function useStudio() {
     }
     await player.play(player.position());
     setPlaying(true);
+    trackOnce("play");
     setStatus(withoutNotice);
   }, []);
 
@@ -265,6 +269,7 @@ export function useStudio() {
 
   /** A new take of the current style and controls. */
   const newTake = useCallback(async () => {
+    trackOnce("new-take");
     player.unlock();
     if (locks.size) return rewriteUnlocked();
     // a Groove stays in its family: Randomise is what changes the idea
@@ -283,6 +288,7 @@ export function useStudio() {
    * With parts locked it keeps the family, and rewrites the rest.
    */
   const randomise = useCallback(async () => {
+    trackOnce("randomise");
     player.unlock();
     if (locks.size) return rewriteUnlocked();
     const others = FAMILIES.filter((f) => f.id !== trackRef.current?.family?.id);
@@ -502,6 +508,7 @@ export function useStudio() {
     });
     const name = trackFileName(t);
     download(encode(audio, trackTags(t, name)), `${name}.${format.type === "aiff" ? "aif" : "wav"}`);
+    count(`export-mix-${format.type}${t.config.dj ? "-dj" : ""}`);
     setStatus(`${format.type === "aiff" ? "AIFF" : "WAV"} downloaded, tagged ${trackTags(t, name).camelot} at ${t.bpm} BPM`);
   }), [exporting, format]);
 
@@ -514,6 +521,7 @@ export function useStudio() {
     });
     const name = loopName(t, r);
     download(encode(audio, trackTags(t, name)), `${name}.${format.type === "aiff" ? "aif" : "wav"}`);
+    count(`export-loop-${format.type}`);
     setStatus(`Loop downloaded: ${r.bars} bars at ${t.bpm} BPM`);
   }), [exporting, format, loopRange]);
 
@@ -526,19 +534,27 @@ export function useStudio() {
       onProgress: (p, stem) => setStatus(`Rendering stems ${Math.round(p * 100)}%, ${stem}`),
     });
     download(zip, `${name}-stems.zip`);
+    count(range ? "export-loop-stems" : "export-stems");
     setStatus("Stems downloaded");
   }), [exporting, format, loopRange]);
 
   // time heard on the current take, and what it said when the page closes
   useEffect(() => {
     if (tasteRef.current.on && !take.current) beginTake(latest.current.now.config);
-    const tick = setInterval(() => { if (take.current && player.playing) take.current.heard += 1; }, 1000);
+    // the activation we watch: 30 seconds of listening in a visit
+    let listened = 0;
+    const tick = setInterval(() => {
+      if (!player.playing) return;
+      if (take.current) take.current.heard += 1;
+      if (++listened === 30) trackOnce("listened-30s");
+    }, 1000);
     addEventListener("pagehide", leaveTake);
     return () => { clearInterval(tick); removeEventListener("pagehide", leaveTake); };
   }, [leaveTake, beginTake]);
 
   const setTasteOn = useCallback((on: boolean) => {
     storeTaste({ ...tasteRef.current, on });
+    if (on) count("taste-on");
     if (on && !take.current) beginTake(latest.current.now.config);
     setStatus(on ? "Learning from what you keep and skip, in this browser only" : "Stopped learning. What it learned stays until you forget it");
   }, [storeTaste, beginTake]);
@@ -557,8 +573,30 @@ export function useStudio() {
       onProgress: (p, what) => setStatus(`Rendering DJ tools ${Math.round(p * 100)}%, ${what}`),
     });
     download(zip, `${name}-dj-tools.zip`);
+    count("export-dj-tools");
     setStatus("DJ tools downloaded: drum loop, tops loop, the build, and the drums as MIDI");
   }), [exporting, format]);
+
+  /**
+   * Files to drag straight into a DAW: the loop's MIDI and audio, made ahead because
+   * a drag has to name its file the moment it starts. Chrome and Edge only.
+   */
+  const prepareDrag = useCallback(async (): Promise<DragFile[]> => {
+    const t = trackRef.current;
+    const r = loopRange();
+    if (!t || !r) return [];
+    const name = loopName(t, r);
+    const midi = await encodeMidi(sliceTrack(t, r.startBar, r.bars), player.audible());
+    const audio = await renderLoop(t, r.startBar, r.bars, sampleRate(), { audible: player.audible(), levels: levels(), rate: format.rate });
+    return [
+      { kind: "MIDI", name: `${name}.mid`, type: "audio/midi", url: URL.createObjectURL(midi) },
+      { kind: "WAV", name: `${name}.wav`, type: "audio/wav", url: URL.createObjectURL(encodeWav(audio, format.bits, trackTags(t, name))) },
+    ];
+  }, [loopRange, format]);
+  const draggedOut = useCallback((kind: string) => {
+    if (take.current) take.current.exported = true;
+    count(`drag-${kind.toLowerCase()}`);
+  }, []);
 
   const exportMidi = useCallback(async (loopOnly = false) => {
     const t = trackRef.current;
@@ -568,6 +606,7 @@ export function useStudio() {
     const part = r ? sliceTrack(t, r.startBar, r.bars) : t;
     download(await encodeMidi(part, player.audible()), `${r ? loopName(t, r) : trackFileName(t)}.mid`);
     if (take.current) take.current.exported = true;
+    count(r ? "export-loop-midi" : "export-midi");
     setStatus("MIDI downloaded");
   }, [loopRange]);
 
@@ -601,6 +640,7 @@ export function useStudio() {
       const sample = await addOwnSample(file, slot === "kick");
       setOwnSamples((list) => [...list.filter((x) => x.id !== sample.id), sample]);
       setSound(slot, sample.id);
+      count("own-sample");
       setStatus(`${sample.name} is your ${slot === "perc2" ? "second perc" : slot}. It stays in this browser.`);
     } catch (e) {
       setStatus((e as Error).message);
@@ -628,6 +668,7 @@ export function useStudio() {
     const url = shareURL(config, edits);
     try {
       await navigator.clipboard.writeText(url);
+      count("share");
       setCopied(true);
       setStatus("Link copied");
       setTimeout(() => setCopied(false), 1800);
@@ -640,7 +681,7 @@ export function useStudio() {
   return {
     config, edits, track, ready, loadProgress, playing, status, busy, loop, seeks, muted, soloed, source, copied,
     locks, format, ownSamples, setSound, addOwnSound, removeOwnSound, update, togglePlay, newTake, randomise, rerollLane, toggleNote, toggleLock, pinRiff, seek, cycleLoop, playFull,
-    toggleMute, toggleSolo, setLevel, setFormat, analyse, exportWav, exportLoopWav, exportStems, exportMidi, exportDjTools, share,
+    toggleMute, toggleSolo, setLevel, setFormat, analyse, exportWav, exportLoopWav, exportStems, exportMidi, exportDjTools, share, prepareDrag, draggedOut,
     taste, setTasteOn, forgetTaste, exportTaste,
     hasLoop: inBars(loop) || loop === "section",
     takes: history.takes, canUndo: history.past.length > 0, canRedo: history.future.length > 0,

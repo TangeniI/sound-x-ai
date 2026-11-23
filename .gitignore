@@ -7,3 +7,7 @@ dist
 ml/data/
 __pycache__/
 ableton-test/
+
+# local environment files (an analytics code can go in .env.production, which is public)
+.env.local
+.env.*.local

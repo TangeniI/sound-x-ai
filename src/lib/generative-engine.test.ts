@@ -285,7 +285,7 @@ describe("edits and dead controls", () => {
         }
       }
     }
-  });
+  }, 30_000); // 304 generations: under a second alone, past 5 s when the whole suite runs at once
 });
 
 describe("hostile input", () => {

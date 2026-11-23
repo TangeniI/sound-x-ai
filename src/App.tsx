@@ -59,7 +59,7 @@ export default function App() {
         <header className="top">
           <div className="brand">
             <h1>Sound <span>×</span> AI</h1>
-            <p>A dark groove techno studio built on recorded machines, metal and rooms.</p>
+            <p>Free techno grooves for your DAW. Press play, then take the loop, stems or MIDI into Ableton. No signup.</p>
           </div>
           <nav>
             <button className="link" onClick={() => setCreditsOpen(true)}>Sounds &amp; credits</button>

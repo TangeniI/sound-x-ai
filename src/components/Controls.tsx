@@ -7,6 +7,7 @@
 
 import type { Studio } from "../hooks/useStudio";
 import { LENGTHS } from "../lib/generative-engine";
+import { track as count } from "../lib/analytics";
 import { DJ_BARS } from "../lib/groove/dj";
 
 const DJ_TOTAL = LENGTHS[LENGTHS.length - 1] + 2 * DJ_BARS;
@@ -82,7 +83,7 @@ export default function Controls({ studio }: { studio: Studio }) {
           ))}
           {groove && (
             <label className={dj ? "on" : ""} title="Six to eight minutes, with 32 bars of drums alone at each end for mixing">
-              <input type="radio" name="length" checked={dj} onChange={() => update({ dj: true })} />
+              <input type="radio" name="length" checked={dj} onChange={() => { update({ dj: true }); count("dj-version"); }} />
               <span>DJ {clock(barSec(DJ_TOTAL))}</span>
             </label>
           )}

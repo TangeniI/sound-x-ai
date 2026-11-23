@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMidi } from "../hooks/useMidi";
-import { LOOP_BARS, type LoopMode, type Studio } from "../hooks/useStudio";
+import { LOOP_BARS, type DragFile, type LoopMode, type Studio } from "../hooks/useStudio";
 import { player } from "../lib/audio/player";
 import { familyOf } from "../lib/groove/parts";
 import { clock, NOTE_NAMES, SECTION_LABEL, STYLES } from "../lib/labels";
@@ -85,6 +85,44 @@ export default function Transport({ studio }: { studio: Studio }) {
         <button className="play" onClick={studio.togglePlay} disabled={!ready} aria-keyshortcuts="Space">
           {!ready ? `Loading ${Math.round(loadProgress * 100)}%` : playing ? "Stop" : "Play"}
         </button>
+        <div className="menu-wrap export-wrap">
+          <button aria-haspopup="menu" aria-expanded={menuOpen === "export"} onClick={toggle("export")} disabled={!ready || busy}>
+            {busy ? "Working…" : "Export"}
+          </button>
+          {menuOpen === "export" && (
+            <div className="menu export" role="menu">
+              <button role="menuitem" className="narrow-only" onClick={run(studio.share)}>Copy the link, to export on your computer</button>
+              <span className="menu-head">{studio.hasLoop ? `This loop${LOOP_BARS[loop] ? `, ${LOOP_BARS[loop]} bars` : ""}` : "Loop: turn on a bar or section loop"}</span>
+              {studio.hasLoop && <DragOut studio={studio} />}
+              <button role="menuitem" disabled={!studio.hasLoop} onClick={run(studio.exportLoopWav)}>Loop ({fileType})</button>
+              <button role="menuitem" disabled={!studio.hasLoop} onClick={run(() => studio.exportStems(true))}>Loop stems (zip)</button>
+              <button role="menuitem" disabled={!studio.hasLoop} onClick={run(() => studio.exportMidi(true))}>Loop notes (MIDI)</button>
+              <span className="menu-head">Whole track</span>
+              <button role="menuitem" onClick={run(studio.exportWav)}>Full mix ({fileType})</button>
+              <button role="menuitem" onClick={run(() => studio.exportStems(false))}>Stems (zip)</button>
+              <button role="menuitem" onClick={run(() => studio.exportMidi(false))}>Notes (MIDI)</button>
+              {track?.family && <button role="menuitem" onClick={run(studio.exportDjTools)} title="Drum loop, tops loop and the build, to layer in a set">DJ tools (zip)</button>}
+              <div className="format" role="group" aria-label="File format">
+                {([24, 16] as const).map((bits) => (
+                  <button key={bits} aria-pressed={studio.format.bits === bits} onClick={() => studio.setFormat({ ...studio.format, bits })}>{bits}-bit</button>
+                ))}
+                {([48000, 44100] as const).map((rate) => (
+                  <button key={rate} aria-pressed={studio.format.rate === rate} onClick={() => studio.setFormat({ ...studio.format, rate })}>{rate / 1000} kHz</button>
+                ))}
+                {(["wav", "aiff"] as const).map((type) => (
+                  <button key={type} aria-pressed={studio.format.type === type} onClick={() => studio.setFormat({ ...studio.format, type })}
+                    title={type === "aiff" ? "DJ software reads AIFF tags most reliably" : undefined}>{type.toUpperCase()}</button>
+                ))}
+              </div>
+              <p className="licence">
+                Files carry the tempo, key and Camelot number for DJ software. Stems are WAV: kick, clap and snare, hats, percussion, low end, music and effects, all the same length.
+                The recordings are CC0 and the two reverb rooms CC BY 4.0 (see Sounds &amp; credits).
+                Sound × AI claims no rights in what you export. Many stores now refuse tracks made wholly
+                by generators, so make it your own before you release it. This isn't legal advice.
+              </p>
+            </div>
+          )}
+        </div>
         <button className="wide-only" onClick={studio.newTake} disabled={!ready} title="Write a new track with these settings (G)">New take</button>
         <button className="wide-only" onClick={studio.randomise} disabled={!ready} title="Randomise (R)">Randomise</button>
         <button className="wide-only step" onClick={studio.undo} disabled={!ready || !studio.canUndo} title="Undo (⌘ or Ctrl Z)">Undo</button>
@@ -128,42 +166,6 @@ export default function Transport({ studio }: { studio: Studio }) {
             </div>
           )}
         </div>
-        <div className="menu-wrap export-wrap">
-          <button aria-haspopup="menu" aria-expanded={menuOpen === "export"} onClick={toggle("export")} disabled={!ready || busy}>
-            {busy ? "Working…" : "Export"}
-          </button>
-          {menuOpen === "export" && (
-            <div className="menu export" role="menu">
-              <span className="menu-head">{studio.hasLoop ? `This loop${LOOP_BARS[loop] ? `, ${LOOP_BARS[loop]} bars` : ""}` : "Loop: turn on a bar or section loop"}</span>
-              <button role="menuitem" disabled={!studio.hasLoop} onClick={run(studio.exportLoopWav)}>Loop ({fileType})</button>
-              <button role="menuitem" disabled={!studio.hasLoop} onClick={run(() => studio.exportStems(true))}>Loop stems (zip)</button>
-              <button role="menuitem" disabled={!studio.hasLoop} onClick={run(() => studio.exportMidi(true))}>Loop notes (MIDI)</button>
-              <span className="menu-head">Whole track</span>
-              <button role="menuitem" onClick={run(studio.exportWav)}>Full mix ({fileType})</button>
-              <button role="menuitem" onClick={run(() => studio.exportStems(false))}>Stems (zip)</button>
-              <button role="menuitem" onClick={run(() => studio.exportMidi(false))}>Notes (MIDI)</button>
-              {track?.family && <button role="menuitem" onClick={run(studio.exportDjTools)} title="Drum loop, tops loop and the build, to layer in a set">DJ tools (zip)</button>}
-              <div className="format" role="group" aria-label="File format">
-                {([24, 16] as const).map((bits) => (
-                  <button key={bits} aria-pressed={studio.format.bits === bits} onClick={() => studio.setFormat({ ...studio.format, bits })}>{bits}-bit</button>
-                ))}
-                {([48000, 44100] as const).map((rate) => (
-                  <button key={rate} aria-pressed={studio.format.rate === rate} onClick={() => studio.setFormat({ ...studio.format, rate })}>{rate / 1000} kHz</button>
-                ))}
-                {(["wav", "aiff"] as const).map((type) => (
-                  <button key={type} aria-pressed={studio.format.type === type} onClick={() => studio.setFormat({ ...studio.format, type })}
-                    title={type === "aiff" ? "DJ software reads AIFF tags most reliably" : undefined}>{type.toUpperCase()}</button>
-                ))}
-              </div>
-              <p className="licence">
-                Files carry the tempo, key and Camelot number for DJ software. Stems are WAV: kick, clap and snare, hats, percussion, low end, music and effects, all the same length.
-                The recordings are CC0 and the two reverb rooms CC BY 4.0 (see Sounds &amp; credits).
-                Sound × AI claims no rights in what you export. Many stores now refuse tracks made wholly
-                by generators, so make it your own before you release it. This isn't legal advice.
-              </p>
-            </div>
-          )}
-        </div>
         <div className="menu-wrap more-wrap narrow-only">
           <button aria-haspopup="menu" aria-expanded={menuOpen === "more"} onClick={toggle("more")} disabled={!ready}>
             {copied ? "Copied" : "More"}
@@ -183,6 +185,54 @@ export default function Transport({ studio }: { studio: Studio }) {
           {menuOpen === "takes" && <div className="menu takes" role="menu">{takeList}</div>}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Chrome and Edge can drag a file out of the page; other browsers get the buttons below. */
+const canDragOut = typeof navigator !== "undefined" && /Chrome\/|Edg\//.test(navigator.userAgent) && !/Mobile/.test(navigator.userAgent);
+
+function DragOut({ studio }: { studio: Studio }) {
+  const [files, setFiles] = useState<DragFile[] | null>(null);
+  const { track } = studio;
+  useEffect(() => {
+    if (!canDragOut) return;
+    let alive = true;
+    let made: DragFile[] = [];
+    setFiles(null);
+    void studio.prepareDrag().then((f) => {
+      made = f;
+      if (alive) setFiles(f);
+      else f.forEach((x) => URL.revokeObjectURL(x.url));
+    });
+    return () => {
+      alive = false;
+      made.forEach((x) => URL.revokeObjectURL(x.url));
+    };
+    // remake when the music or the loop changes
+  }, [track, studio.hasLoop, studio.prepareDrag]);
+  if (!canDragOut) return null;
+  return (
+    <div className="drag-out" aria-label="Drag into your DAW">
+      <span>Drag into your DAW</span>
+      {files === null
+        ? <small>Preparing…</small>
+        : files.map((f) => (
+          <span
+            key={f.kind}
+            className="drag-chip"
+            draggable
+            title={`Drag ${f.name} into Ableton or any DAW`}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "copy";
+              e.dataTransfer.setData("DownloadURL", `${f.type}:${f.name}:${f.url}`);
+              e.dataTransfer.setData("text/plain", f.name);
+            }}
+            onDragEnd={(e) => { if (e.dataTransfer.dropEffect !== "none") studio.draggedOut(f.kind); }}
+          >
+            ⠿ {f.kind}
+          </span>
+        ))}
     </div>
   );
 }

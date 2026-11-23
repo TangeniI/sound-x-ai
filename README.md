@@ -36,6 +36,7 @@ real recordings and 2 measured rooms, with the same signal path for live playbac
 - Export the whole track as WAV or AIFF, seven stems in one zip (the kick on its own) or MIDI, at 24 or 16-bit and 48 or 44.1 kHz, without the parts you muted. Files are tagged with tempo, key and Camelot number for Rekordbox, Traktor and Serato. Or share a link that reopens the exact track.
 - Make a DJ version of a Groove: about seven minutes, with 32 bars of drums alone at each end (kick and hats first) and the rumble held back there, so it mixes in and out.
 - Export DJ tools: the peak's drums as a 16-bar loop, the same without the kick, and the build into the first drop, as tagged WAVs plus the drums as MIDI.
+- Drag the loop's MIDI or WAV straight from the Export menu into your DAW (Chrome and Edge).
 - Play the track on your own instruments over Web MIDI, with clock, start, stop and song position so a DAW follows (Chrome, Edge, Firefox).
 
 ## How Groove is built
@@ -130,6 +131,15 @@ picks every family evenly. It leans towards a simulated listener's favourites. I
 baseline on held-out takes. And it finds nothing in coin flips. It hasn't been measured on real people yet:
 that needs real use, and a blind vote before and after.
 
+## Privacy and analytics
+
+Nothing you make leaves the browser. When `VITE_GOATCOUNTER` is set at build time (in
+`.env.production`, to `https://<code>.goatcounter.com/count`), the page counts visits and
+a handful of anonymous events with [GoatCounter](https://www.goatcounter.com/): no cookies, no
+personal data. The events are `play`, `listened-30s`, `randomise`, `export-*`, `drag-*`,
+`share`, `dj-version`, `midi-connect`, `taste-on`, `own-sample` and `return-*`. Without the
+variable, nothing is loaded.
+
 ## Audio analysis
 
 [`audio-analysis.ts`](src/lib/audio-analysis.ts) is plain DSP with no ML library:
@@ -155,7 +165,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and signal path.
 ```bash
 npm install
 npm run dev      # http://localhost:5173
-npm test         # 255 tests
+npm test         # 257 tests
 npm run build    # typecheck + production build
 ```
 
@@ -186,6 +196,7 @@ src/
     ├── audio-analysis.ts     tempo and key detection
     ├── share.ts              permalinks
     ├── taste.ts              preference learning from keeps and skips
+    ├── analytics.ts          anonymous counts (GoatCounter), off unless configured
     ├── midi.ts               MIDI messages, clock and song position
     ├── zip.ts                stems zip, no dependency
     └── audio/                samples, kits, sound swaps, your own samples, graph, voices, player,

@@ -6,6 +6,7 @@
  * shows a permission prompt for MIDI.
  */
 
+import { track } from "../lib/analytics";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { player } from "../lib/audio/player";
 import { MidiOut, midiSupported } from "../lib/midi";
@@ -57,6 +58,7 @@ export function useMidi() {
     try {
       const m = out();
       const list = await m.connect();
+      track("midi-connect");
       m.onPorts = (next) => {
         setPorts(next);
         if (m.selected && !next.some((p) => p.id === m.selected)) choose(null);
