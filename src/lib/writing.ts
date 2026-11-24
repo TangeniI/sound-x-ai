@@ -75,19 +75,20 @@ export interface Feel {
   touch?: number; // share of velocity that varies from hit to hit
 }
 
-// The kick is the grid. Everything else leans back from it by its own amount.
+// The kick is the grid, and so is everything else: the references sit within 2 ms of it.
+// What's left is a hair of drift so repeats aren't machine-identical, and velocity.
 export const FEEL = {
   kick:   { touch: 0.02 },
-  ghost:  { late: 0.004, loose: 0.002 },
-  clap:   { late: 0.007, loose: 0.003 },
-  hat:    { late: 0.002, loose: 0.003, touch: 0.22 },
-  open:   { late: 0.005, loose: 0.002 },
-  ride:   { late: 0.003, loose: 0.002 },
-  shaker: { late: 0.009, loose: 0.005, touch: 0.3 },
-  perc:   { late: 0.004, loose: 0.004, touch: 0.25 },
-  tom:    { late: 0.006, loose: 0.003, touch: 0.25 },
-  bass:   { late: 0.002, loose: 0.001, touch: 0.08 },
-  synth:  { late: 0.003, loose: 0.002, touch: 0.14 },
+  ghost:  { loose: 0.001 },
+  clap:   { loose: 0.001, touch: 0.08 },
+  hat:    { loose: 0.001, touch: 0.22 },
+  open:   { loose: 0.001 },
+  ride:   { loose: 0.001 },
+  shaker: { loose: 0.0015, touch: 0.3 },
+  perc:   { loose: 0.0015, touch: 0.25 },
+  tom:    { loose: 0.0015, touch: 0.25 },
+  bass:   { loose: 0.0005, touch: 0.08 },
+  synth:  { loose: 0.001, touch: 0.14 },
 } satisfies Record<string, Feel>;
 
 export function note(c: Score, instrument: Lane, step: number, pitch: number, length: number, velocity: number, feel: Feel = {}, extra: Partial<NoteEvent> = {}): void {

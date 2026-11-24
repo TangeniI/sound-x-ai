@@ -31,7 +31,7 @@ export const LANES: Lane[] = ["lead", "pad", "stab", "bass", "perc", "drums"];
 /** A single scheduled note. */
 export interface NoteEvent {
   pitch:      number; // MIDI 0–127
-  startTime:  number; // seconds, swing included
+  startTime:  number; // seconds, feel included
   endTime:    number; // seconds
   velocity:   number; // 0–127
   instrument: Instrument;
@@ -43,7 +43,7 @@ export interface NoteEvent {
 }
 
 /** Styles — each picks its own patterns and its own recorded kit. */
-export type StyleId = "driving" | "hypnotic" | "acid" | "tribal" | "dub" | "warehouse";
+export type StyleId = "driving" | "hypnotic" | "acid" | "tribal" | "dub" | "warehouse" | "hard";
 
 /** The twelve Groove families. Each is built around one idea. */
 export type FamilyId =
@@ -109,6 +109,7 @@ export interface MixParams {
   pump:       number; // 0–1  sidechain depth
   kickTune:   number; // semitones, tunes the kick to the key
   rumbleTune: number; // semitones, tunes the sub layer to the key
+  grit:       number; // level of the rumble's distorted mids, 0 for most styles
 }
 
 /** What the riff model did, kept so the UI can show it. */

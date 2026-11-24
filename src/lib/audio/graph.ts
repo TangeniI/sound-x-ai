@@ -30,7 +30,7 @@ export const CHANNELS: ChannelId[] = ["lead", "pad", "stab", "bass", "rumble", "
 /** A channel's effect sends. They follow its mute, so a muted part leaves no echo. */
 export interface Gates { hall: GainNode; echo: GainNode; room: GainNode }
 
-export const OUTPUT_GAIN = 0.795; // -2 dBFS, leaving room for peaks between samples
+export const OUTPUT_GAIN = 0.891; // -1 dBFS, leaving room for peaks between samples
 /** How far past full scale a saturator can be driven before its curve runs out. */
 const HEADROOM = 4;
 
@@ -48,6 +48,7 @@ export interface Graph {
   drive:   WaveShaperNode;
   drumsGain: GainNode;
   rumbleGain: GainNode;
+  grit:    GainNode;                     // the rumble's distorted mids, for hard techno
   lowGate: GainNode;                     // shuts the rumble before a hit
   atmos:   GainNode;
   out:     GainNode;
@@ -178,8 +179,12 @@ function hallReverb(ctx: BaseAudioContext, bank: SampleBank, id: string): Convol
   return c;
 }
 
-const MASTER_LEVEL = 2.15; // into the ceiling
+const MASTER_LEVEL = 2.4; // into the ceiling: about -7.5 LUFS, as loud as Takt's master
 const STEM_LEVEL = 0.5;   // room for the parts to add up
+// Measured against Takt "Groove Chaser": mids that stay out of the way (250 Hz-2 kHz
+// about 20 dB under the total), and a sub that holds between the kicks (see applyMix).
+const SYNTH_LEVEL = 0.5;
+const RUMBLE_BOOST = 6; // +15 dB: Takt's sub sits within a few dB of the kick all through the beat
 
 /** Dub-style tape delay: filtered, driven repeats with a slow wow in the time. */
 function tapeEcho(ctx: BaseAudioContext): { input: AudioNode; output: AudioNode; feedback: GainNode; time: AudioParam } {
@@ -216,7 +221,8 @@ export function buildGraph(ctx: BaseAudioContext, bank: SampleBank, { master = t
   const subsonic = filter(ctx, "highpass", 28);
   const lowTone = filter(ctx, "lowshelf", 70, 0.7, -2.8);
   const mids = filter(ctx, "peaking", 1100, 0.8, -1.5);
-  const air = filter(ctx, "highshelf", 8500, 0.7, -11);
+  const box = filter(ctx, "peaking", 400, 0.7, -4); // Takt keeps 250-500 Hz about 20 dB under the total
+  const air = filter(ctx, "highshelf", 8500, 0.7, -7);
   chain(masterIn, subsonic);
   if (master) {
     const glue = ctx.createDynamicsCompressor();
@@ -227,10 +233,10 @@ export function buildGraph(ctx: BaseAudioContext, bank: SampleBank, { master = t
     glue.knee.value = 10;
     const level = gainNode(ctx, MASTER_LEVEL * undoMakeup(-10, 1.6));
     const ceiling = saturator(ctx, ceilingCurve(), "4x");
-    chain(monoLows(ctx, subsonic), lowTone, mids, air, glue, level, ceiling.input);
+    chain(monoLows(ctx, subsonic), lowTone, mids, box, air, glue, level, ceiling.input);
     ceiling.node.connect(out);
   } else {
-    chain(monoLows(ctx, subsonic), lowTone, mids, air, gainNode(ctx, STEM_LEVEL), out);
+    chain(monoLows(ctx, subsonic), lowTone, mids, box, air, gainNode(ctx, STEM_LEVEL), out);
   }
   out.connect(ctx.destination);
 
@@ -250,7 +256,7 @@ export function buildGraph(ctx: BaseAudioContext, bank: SampleBank, { master = t
   /* drums: the kick has its own chain, so the hats are never distorted by it */
   const kickIn = gainNode(ctx, 1);
   const kickHp = filter(ctx, "highpass", 30);
-  const kickBox = filter(ctx, "peaking", 280, 1, -3);
+  const kickBox = filter(ctx, "peaking", 200, 0.9, -6); // the references keep the kick in the sub, not the box
   const kickWarm = saturator(ctx, softClip(0.9), "4x");
   chain(kickIn, kickHp, kickBox, kickWarm.input);
   chain(kickWarm.node, gainNode(ctx, 0.5), strips.drums);
@@ -284,6 +290,13 @@ export function buildGraph(ctx: BaseAudioContext, bank: SampleBank, { master = t
   const rumbleGain = gainNode(ctx, 0.2);
   chain(rumbleIn, rumbleVerb, rumbleDrive.input);
   chain(rumbleDrive.node, rumbleLp1, rumbleLp2, rumbleHp, rumbleMono, strips.rumble, rumbleGain, duckRumble);
+  // hard techno keeps the rumble's distortion: driven again, and only the mids, wide
+  const gritDrive = saturator(ctx, softClip(5), "4x");
+  const gritHp = filter(ctx, "highpass", 750, 0.7);
+  const gritLp = filter(ctx, "lowpass", 7000, 0.7);
+  const grit = gainNode(ctx, 0);
+  chain(rumbleVerb, gainNode(ctx, 30), gritDrive.input); // the tail is quiet: push it well into the curve so it clips
+  chain(gritDrive.node, gritHp, gritLp, grit, widener(ctx, 0.013, 0.5, strips.rumble)); // mute and level with the rumble
 
   /* bass: both layers share one gentle drive, so they read as one sound */
   const bassIn = gainNode(ctx, 1);
@@ -294,8 +307,8 @@ export function buildGraph(ctx: BaseAudioContext, bank: SampleBank, { master = t
 
   /* synth bus */
   const sweep = filter(ctx, "lowpass", 18000, 0.9);
-  const synthBus = gainNode(ctx, 1);
-  const synthHp = filter(ctx, "highpass", 150);
+  const synthBus = gainNode(ctx, SYNTH_LEVEL);
+  const synthHp = filter(ctx, "highpass", 250);
   const stabIn = gainNode(ctx, 1);
   const leadIn = gainNode(ctx, 1);
   const padIn = gainNode(ctx, 1);
@@ -354,6 +367,7 @@ export function buildGraph(ctx: BaseAudioContext, bank: SampleBank, { master = t
     drive: tops.node,
     drumsGain,
     rumbleGain,
+    grit,
     lowGate,
     atmos,
     out,
@@ -379,9 +393,10 @@ export function applyMix(g: Graph, mix: MixParams, beatSec: number, time = 0): v
   g.drive.curve = softClip(amount);
   // small signals gain k / tanh(k), so take some of it back
   g.drumsGain.gain.setValueAtTime(1 / Math.sqrt(amount / Math.tanh(amount)), time);
-  g.rumbleGain.gain.setValueAtTime(0.05 + mix.rumble * 0.17, time);
+  g.rumbleGain.gain.setValueAtTime((0.05 + mix.rumble * 0.17) * RUMBLE_BOOST, time);
   g.hallOut.gain.setValueAtTime(0.2 + mix.space * 0.65, time);
   g.echoFb.gain.setValueAtTime(0.25 + mix.echo * 0.34, time);
+  g.grit.gain.setValueAtTime(mix.grit ?? 0, time);
   g.lowGate.gain.setValueAtTime(1, time); // open, unless the arrangement says otherwise
   g.state.brightness = mix.brightness;
 }

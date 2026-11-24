@@ -6,7 +6,7 @@ import { neuralRiff, type ModelJSON } from "./neural-engine";
 import type { GeneratorConfig, Lane, StyleId } from "../types";
 
 const base: GeneratorConfig = { ...DEFAULT_CONFIG, bars: 64 };
-const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "tribal", "dub", "warehouse"];
+const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "tribal", "dub", "warehouse", "hard"];
 const gen = (over: Partial<GeneratorConfig> = {}) => generativeEngine.generate({ ...base, ...over });
 const lane = (t: ReturnType<typeof gen>, l: string) => t.notes.filter((n) => n.instrument === l);
 const pitches = (t: ReturnType<typeof gen>, l: string) => lane(t, l).map((n) => `${n.step}:${n.pitch}`);
@@ -75,6 +75,10 @@ describe("controls change the music", () => {
 describe("arrangement", () => {
   it("adds up to the requested length", () => {
     for (const bars of LENGTHS) expect(arrange(bars).reduce((n, s) => n + s.bars, 0)).toBe(bars);
+    for (const bars of LENGTHS) expect(arrange(bars, "hard").reduce((n, s) => n + s.bars, 0)).toBe(bars);
+    // hard's breakdown is long, like the reference: over a sixth of a full track
+    const hard = arrange(176, "hard");
+    expect(hard.filter((s) => s.kind === "break").reduce((n, s) => n + s.bars, 0)).toBeGreaterThanOrEqual(176 / 7);
   });
 
   it("every riser lands on a drop, at every length", () => {
@@ -216,11 +220,11 @@ describe("groove", () => {
     for (const n of lane(t, "drums").filter((x) => x.pitch === 36)) expect(Math.abs(offset(n))).toBeLessThan(1e-9);
   });
 
-  it("lets the other parts lean back by varying amounts", () => {
+  it("keeps the other parts on the grid, with only a hair of drift", () => {
     const late = t.notes.filter((n) => n.instrument === "perc" || n.pitch === 42).map(offset);
     expect(Math.min(...late)).toBeGreaterThanOrEqual(0);
-    expect(new Set(late.map((v) => Math.round(v * 10000))).size).toBeGreaterThan(20);
-    expect(Math.max(...late)).toBeLessThan(0.05);
+    expect(new Set(late.map((v) => Math.round(v * 100000))).size).toBeGreaterThan(20); // not machine-identical
+    expect(Math.max(...late)).toBeLessThan(0.002); // the references sit within 2 ms
   });
 
   it("turns percussion loops against the bar", () => {

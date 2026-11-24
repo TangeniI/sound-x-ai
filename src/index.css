@@ -168,7 +168,7 @@ small,
 
 .style-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
@@ -865,6 +865,7 @@ legend {
   .brand p { flex-basis: 100%; }
   .row { grid-template-columns: minmax(0, 1fr); }
   .style-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .style-card:first-child { grid-column: 1 / -1; } /* Groove gets the top row, the other six fill two */
 }
 
 /* the transport's buttons need two rows well before the layout changes */

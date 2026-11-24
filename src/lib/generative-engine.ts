@@ -118,7 +118,6 @@ interface Style {
   clap:      "clap" | "rim" | "sparse";
   openHats:  number[];   // steps with an open hat
   hatAccent: number[];   // velocity of the four 16ths in a beat
-  swing:     number;     // share of a 16th the off-steps fall late
   toms:      number;     // 0–1, how much of the rolling tuned-tom line plays
   loops:     number[];   // lengths the percussion loops may take, in steps
   stabs:     { hits: number[]; len: number }[]; // a rhythm and the loop it turns over
@@ -134,40 +133,45 @@ interface Style {
 
 const STYLES: Record<StyleId, Style> = {
   driving: {
-    bass: "rolling", clap: "clap", openHats: [2, 6, 10, 14], hatAccent: [0.62, 0.4, 1, 0.55], swing: 0.13,
+    bass: "rolling", clap: "clap", openHats: [2, 6, 10, 14], hatAccent: [0.62, 0.4, 1, 0.55],
     toms: 0.45, loops: [6, 7, 12], stabs: [{ hits: [3], len: 16 }, { hits: [6], len: 32 }, { hits: [11], len: 16 }], stabLen: 1.5, voicing: [0, 4],
     leadKeep: 0.28, leadLen: 0.8, pump: 0.72, space: 0.3, echo: 0.36, rumble: 0.65,
   },
   hypnotic: {
-    bass: "offbeat", clap: "rim", openHats: [2, 10], hatAccent: [0.5, 0.35, 0.9, 0.6], swing: 0.16,
+    bass: "offbeat", clap: "rim", openHats: [2, 10], hatAccent: [0.5, 0.35, 0.9, 0.6],
     toms: 0.35, loops: [5, 6, 7], stabs: [{ hits: [3], len: 12 }, { hits: [10], len: 32 }, { hits: [6], len: 16 }], stabLen: 2, voicing: [0, 4],
     leadKeep: 0.4, leadLen: 0.65, pump: 0.6, space: 0.45, echo: 0.6, rumble: 0.6,
   },
   tribal: {
-    bass: "tresillo", clap: "sparse", openHats: [6, 14], hatAccent: [0.7, 0.45, 0.85, 0.65], swing: 0.18,
+    bass: "tresillo", clap: "sparse", openHats: [6, 14], hatAccent: [0.7, 0.45, 0.85, 0.65],
     toms: 1, loops: [3, 5, 12], stabs: [{ hits: [14], len: 32 }, { hits: [6], len: 32 }], stabLen: 1.2, voicing: [0, 4],
     leadKeep: 0.2, leadLen: 0.6, pump: 0.6, space: 0.36, echo: 0.3, rumble: 0.5,
   },
   acid: {
-    bass: "acid", clap: "clap", openHats: [2, 6, 10, 14], hatAccent: [0.55, 0.3, 1, 0.45], swing: 0.1,
+    bass: "acid", clap: "clap", openHats: [2, 6, 10, 14], hatAccent: [0.55, 0.3, 1, 0.45],
     toms: 0.25, loops: [6, 8, 12], stabs: [], stabLen: 2, voicing: [0],
     leadKeep: 0.16, leadLen: 0.6, pump: 0.66, space: 0.3, echo: 0.42, rumble: 0.5,
   },
   dub: {
-    bass: "dub", clap: "rim", openHats: [14], hatAccent: [0.4, 0.3, 0.85, 0.5], swing: 0.17,
+    bass: "dub", clap: "rim", openHats: [14], hatAccent: [0.4, 0.3, 0.85, 0.5],
     toms: 0.15, loops: [5, 7, 12], stabs: [{ hits: [3], len: 16 }, { hits: [6], len: 16 }, { hits: [3, 10], len: 32 }], stabLen: 3, voicing: [0, 2, 4],
     leadKeep: 0.15, leadLen: 1.2, pump: 0.5, space: 0.62, echo: 0.9, rumble: 0.5,
   },
   warehouse: {
-    bass: "sub", clap: "sparse", openHats: [2, 10], hatAccent: [0.7, 0.5, 1, 0.5], swing: 0.06,
+    bass: "sub", clap: "sparse", openHats: [2, 10], hatAccent: [0.7, 0.5, 1, 0.5],
     toms: 0.6, loops: [3, 7, 12], stabs: [{ hits: [6], len: 32 }, { hits: [10], len: 24 }], stabLen: 1.5, voicing: [0, 7],
     leadKeep: 0.22, leadLen: 0.6, pump: 0.85, space: 0.42, echo: 0.28, rumble: 0.9,
+  },
+  hard: {
+    bass: "sub", clap: "clap", openHats: [2, 6, 10, 14], hatAccent: [0.8, 0.55, 1, 0.65],
+    toms: 0.3, loops: [3, 4, 6], stabs: [{ hits: [6], len: 32 }], stabLen: 1, voicing: [0, 7],
+    leadKeep: 0.12, leadLen: 0.5, pump: 0.9, space: 0.3, echo: 0.2, rumble: 1,
   },
 };
 
 /* ────────────────────────── arrangement ──────────────────────────── */
 
-export const LENGTHS = [16, 32, 64, 96, 128, 176];
+export const LENGTHS = [16, 32, 64, 96, 128, 176, 208];
 
 const LAYOUTS: Record<number, [SectionKind, number][]> = {
   16: [["intro", 2], ["groove", 4], ["break", 2], ["build", 2], ["drop", 6]],
@@ -177,15 +181,27 @@ const LAYOUTS: Record<number, [SectionKind, number][]> = {
   128: [["intro", 8], ["groove", 16], ["riff", 32], ["break", 8], ["build", 8], ["drop", 40], ["outro", 16]],
   // five minutes at 138 BPM, the middle of the reference playlist
   176: [["intro", 16], ["groove", 16], ["riff", 32], ["break", 8], ["build", 8], ["drop", 32], ["riff", 16], ["break", 4], ["build", 4], ["drop", 24], ["outro", 16]],
+  // a full club length, like Takt "Groove Chaser" (211 bars at 145)
+  208: [["intro", 16], ["groove", 16], ["riff", 40], ["break", 8], ["build", 8], ["drop", 40], ["riff", 24], ["break", 4], ["build", 4], ["drop", 32], ["outro", 16]],
 };
 
 function nearestLength(bars: number): number {
   return LENGTHS.reduce((a, b) => (Math.abs(b - bars) < Math.abs(a - bars) ? b : a));
 }
 
-export function arrange(bars: number): Section[] {
+// Hard takes its time in the middle: TRAIN FANTOME's breakdown runs 36 of its 157 bars
+const HARD_LAYOUTS: Record<number, [SectionKind, number][]> = {
+  96: [["intro", 8], ["groove", 8], ["riff", 8], ["break", 16], ["build", 8], ["drop", 40], ["outro", 8]],
+  128: [["intro", 8], ["groove", 16], ["riff", 12], ["break", 20], ["build", 8], ["drop", 52], ["outro", 12]],
+  176: [["intro", 8], ["groove", 16], ["riff", 20], ["break", 28], ["build", 8], ["drop", 80], ["outro", 16]],
+  208: [["intro", 16], ["groove", 16], ["riff", 24], ["break", 28], ["build", 8], ["drop", 96], ["outro", 20]],
+};
+
+export function arrange(bars: number, style?: StyleId): Section[] {
   let at = 0;
-  return LAYOUTS[nearestLength(bars)].map(([kind, length]) => {
+  const length = nearestLength(bars);
+  const layout = (style === "hard" && HARD_LAYOUTS[length]) || LAYOUTS[length];
+  return layout.map(([kind, length]) => {
     const s = { kind, startBar: at, bars: length };
     at += length;
     return s;
@@ -221,10 +237,9 @@ export class GenerativeEngine {
     const { scale, tonality } = chooseScale(cfg);
     const root = cfg.rootPitch;
     const stepSec = 60 / cfg.tempo / 4;
-    const swing = stepSec * style.swing;
-    const time = (step: number) => step * stepSec + (step % 2 === 1 ? swing : 0);
+    const time = (step: number) => step * stepSec;
 
-    const sections = arrange(cfg.bars);
+    const sections = arrange(cfg.bars, cfg.style);
     const bars = sections.reduce((n, s) => n + s.bars, 0);
     const notes: NoteEvent[] = [];
     const riff = writeRiff(cfg);
@@ -622,6 +637,7 @@ function mixFor(cfg: GeneratorConfig, style: Pick<Style, "pump" | "space" | "ech
     pump: clamp(style.pump * (0.65 + cfg.energy * 0.5)),
     kickTune: tuneTo(kit.kickRoot),
     rumbleTune: tuneTo(RUMBLE_ROOT),
+    grit: kit.grit ?? 0,
   };
 }
 

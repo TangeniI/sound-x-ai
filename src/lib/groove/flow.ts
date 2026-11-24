@@ -4,7 +4,7 @@
  * How a Groove track winds down and hits. In the records studied, the impact is
  * contrast: the low end leaves at the end of a phrase while the idea carries on,
  * then it all returns exactly on the one at its usual level. The pulls grow from
- * a beat to a bar to two bars, and once per track to a full break.
+ * a bar to two bars at the end of each 16-bar phrase, and once per track to a full break.
  */
 
 import { hitNoise } from "../writing";
@@ -43,6 +43,13 @@ const LAYOUTS: Record<number, Layout[]> = {
     [["intro", 16], ["groove", 32], ["riff", 40], ["break", 8], ["build", 8], ["drop", 56], ["outro", 16]],
     [["groove", 32], ["riff", 48], ["break", 8], ["build", 8], ["drop", 32], ["break", 4], ["build", 4], ["drop", 24], ["outro", 16]],
     [["intro", 16], ["groove", 32], ["riff", 48], ["break", 4], ["build", 4], ["drop", 56], ["outro", 16]],
+  ],
+  // a full-length club track, laid out like Takt "Groove Chaser" (211 bars at 145):
+  // the main break lands near bar 104, then a long second half
+  208: [
+    [["intro", 16], ["groove", 48], ["riff", 40], ["break", 4], ["build", 4], ["drop", 48], ["break", 4], ["build", 4], ["drop", 28], ["outro", 12]],
+    [["intro", 16], ["groove", 48], ["riff", 40], ["break", 8], ["build", 8], ["drop", 72], ["outro", 16]],
+    [["groove", 32], ["riff", 56], ["break", 8], ["build", 8], ["drop", 48], ["break", 4], ["build", 4], ["drop", 32], ["outro", 16]],
   ],
 };
 
@@ -120,16 +127,19 @@ export function pullsFor(cfg: GeneratorConfig, family: Family, sections: Section
     // a break is its own wind-down, and the outro only sheds layers
     if (held(end - 1) || (!isLoop && end < bars && sections.some((s) => s.kind === "break" && s.startBar === end))) continue;
 
-    let beats = 1;
+    // As in Takt: the sub stays through each 16-bar phrase and leaves for a bar or two
+    // at its end. Inside a phrase it rarely moves.
+    let beats = 0;
     if (isLoop) {
       beats = family.turn;
     } else if (end % 32 === 0) {
       beats = cfg.variation < 0.2 ? 4 : 8;
     } else if (end % 16 === 0) {
-      beats = 4;
-    } else if (hitNoise(cfg.seed, end, 32) < cfg.variation * 0.6) {
-      beats = 2;
+      beats = hitNoise(cfg.seed, end, 32) < 0.5 ? 8 : 4;
+    } else if (hitNoise(cfg.seed, end, 32) < cfg.variation * 0.3) {
+      beats = 1;
     }
+    if (!beats) continue;
     const to = end * 16;
     const from = to - beats * 4;
     out.push({ from, gone: family.pull === "thin" ? to - 4 : from, to, main: false });

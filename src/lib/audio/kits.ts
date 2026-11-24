@@ -57,6 +57,10 @@ export interface Kit {
   bass:   BassVoice;
   /** A real hit laid into the kick, like a door slam caught in a warehouse. */
   slam:   number;
+  /** tanh drive on the kick itself: the distorted kick of hard techno. */
+  kickDrive?: number;
+  /** Level of the rumble's distorted mids. */
+  grit?:  number;
   lead:   LeadVoice;
   /** Share of the kit level sent to hall / echo, per lane. */
   sends:  { stab: [number, number]; lead: [number, number]; perc: [number, number] };
@@ -156,6 +160,17 @@ export const KITS: Record<StyleId, Kit> = {
     slam: 0.32,
     lead: { zones: CLAVI, cutoff: 500, decay: 0.04, gain: 0.08 },
     sends: { stab: [0.5, 0.32], lead: [0.3, 0.3], perc: [0.36, 0.2] },
+  },
+  // Modelled on TRAIN FANTOME "DRONE (LESSSS EDIT)": 156 BPM, a kick driven until most of
+  // its energy sits between 250 Hz and 4 kHz, running 16ths on top. The drive and grit alone bring it to about -5 LUFS, as loud as that master
+  hard: {
+    kick: "kick_tek", kickRoot: 40.3, kickGain: 0.75, kickLen: 0.24, kickDrive: 7, grit: 2.6, tops: 1.4,
+    clap: ["clap_909", "clap_hands"], rim: "rim_909",
+    hatC: ["hat_raw", "hat_909_c"], hatO: "hat_909_o", perc: ["rim_909", "anvil"], percTone: 5200,
+    bass: { sub: 0.2, decay: 0.06 },
+    slam: 0.12,
+    lead: { zones: CLAVI, cutoff: 600, decay: 0.04, gain: 0.08 },
+    sends: { stab: [0.2, 0.2], lead: [0.2, 0.2], perc: [0.2, 0.16] },
   },
 };
 

@@ -8,19 +8,21 @@ export const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A",
  * `store` is the shelf a store files the style on. Beatport splits techno in two:
  * Peak Time / Driving, and Raw / Deep / Hypnotic. Files carry it as their genre.
  */
-export const STYLES: { id: StyleId; label: string; desc: string; store: string }[] = [
+export const STYLES: { id: StyleId; label: string; desc: string; store: string; tempo?: number }[] = [
   { id: "driving", label: "Groove", desc: "Twelve families, one idea each", store: "Peak Time / Driving" },
   { id: "hypnotic", label: "Hypnotic", desc: "Turning loops, long echoes", store: "Raw / Deep / Hypnotic" },
   { id: "tribal", label: "Percussive", desc: "Tuned toms, taps and hand claps", store: "Peak Time / Driving" },
   { id: "warehouse", label: "Raw", desc: "Anvil, brake drum, rumble", store: "Raw / Deep / Hypnotic" },
   { id: "dub", label: "Dub", desc: "One chord, tape and space", store: "Raw / Deep / Hypnotic" },
   { id: "acid", label: "Acid", desc: "Accent, slide, resonance", store: "Peak Time / Driving" },
+  { id: "hard", label: "Hard", desc: "Driven kick, 156 BPM, loud", store: "Hard Techno", tempo: 156 },
 ];
 
 /** The genre a store would file a track under, as written in its tags. */
 export function storeGenre(style: StyleId): string {
   const shelf = STYLES.find((s) => s.id === style)?.store;
-  return shelf ? `Techno (${shelf})` : "Techno";
+  // Hard Techno is a genre of its own on Beatport, not a shelf of Techno
+  return !shelf ? "Techno" : shelf === "Hard Techno" ? shelf : `Techno (${shelf})`;
 }
 
 // the engine's section kinds predate the dark groove rebuild; these are the words for them

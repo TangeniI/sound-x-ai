@@ -51,8 +51,8 @@ export function composeGroove(cfg: GeneratorConfig, bars: number): GrooveTrack {
   const parts = chooseParts(cfg);
   const { family } = parts;
   const stepSec = 60 / cfg.tempo / 4;
-  const swing = stepSec * family.swing;
-  const time = (step: number) => step * stepSec + (step % 2 === 1 ? swing : 0);
+  // dead straight: the references measured within 2 ms of the grid, no swing
+  const time = (step: number) => step * stepSec;
   const sections = grooveSections(cfg, bars);
   const c: Ctx = { cfg, parts, bars, sections, time, stepSec, notes: [], pulls: pullsFor(cfg, family, sections, bars) };
 
@@ -122,9 +122,9 @@ function writeClap(c: Ctx, m: Moment): void {
   const { cfg, parts: { family, fill, later } } = c;
   const { step, bar, s, sec, toHit, place: { act, phrase: n, at } } = m;
   if (inGap(c, m)) return;
-  const feel = { late: family.clapLate, loose: 0.0025, touch: 0.08 };
+  const feel = FEEL.clap;
   const play = (pitch: number, velocity: number, f: typeof feel = feel) => note(c, "drums", step, pitch, 1, vel(c, velocity), f);
-  const rolled = { late: 0.002, loose: 0.002, touch: 0.06 };
+  const rolled = { loose: 0.001, touch: 0.06 };
 
   if (m.pull && family.tension === "roll") {
     // quarters, then eighths, then 16ths, louder all the way into the hit

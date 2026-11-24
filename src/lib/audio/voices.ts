@@ -12,6 +12,12 @@ import type { SampleBank } from "./samples";
 import { hitNoise, PERC } from "../writing";
 import { chordOf, pickZone, SUB, TOM_ROOT, type Kit } from "./kits";
 
+/** How far the backbeat's bright layer lands behind the beat: the one offset the references keep. */
+export const BACKBEAT_PUSH = 0.024;
+
+/** Share of the chord's reverb and echo sends kept. */
+const STAB_WET = 0.35;
+
 /** Everything a voice needs. Live and offline each build their own. */
 export interface Runtime {
   ctx:   BaseAudioContext;
@@ -134,6 +140,22 @@ function pump(rt: Runtime, time: number): void {
   duck(rumble, 0.03, 0.3, 0.17);
 }
 
+const drives = new Map<number, Float32Array<ArrayBuffer>>();
+
+/** The kick through its own hard tanh, so its harmonics fill the mids like a hard techno kick. */
+function driven(rt: Runtime, amount: number): AudioNode {
+  let curve = drives.get(amount);
+  if (!curve) drives.set(amount, (curve = softClip(amount)));
+  const shaper = rt.ctx.createWaveShaper();
+  shaper.curve = curve;
+  shaper.oversample = "4x";
+  const back = rt.ctx.createGain();
+  back.gain.value = 0.55; // the drive adds level as well as grit
+  shaper.connect(back);
+  back.connect(rt.graph.kickIn);
+  return shaper;
+}
+
 function drum(rt: Runtime, n: NoteEvent, time: number): void {
   const { graph, bank, kit, track } = rt;
   const v = curve(n.velocity);
@@ -146,7 +168,7 @@ function drum(rt: Runtime, n: NoteEvent, time: number): void {
       break;
     case 36: {
       const rate = 2 ** (track.mix.kickTune / 12);
-      hit(rt, bank.get(kit.kick), graph.kickIn, time, { gain: 1.35 * kit.kickGain * v, rate, dur: kit.kickLen, release: 0.05 });
+      hit(rt, bank.get(kit.kick), kit.kickDrive ? driven(rt, kit.kickDrive) : graph.kickIn, time, { gain: 1.35 * kit.kickGain * v, rate, dur: kit.kickLen, release: 0.05 });
       if (kit.slam) {
         // band-limited, so it adds the sound of the space without touching the sub
         const band = bandPass(rt, graph.inputs.drums, time, 260, 1300);
@@ -166,7 +188,9 @@ function drum(rt: Runtime, n: NoteEvent, time: number): void {
     case 40: {
       // 40 is the same drum in a roll: lighter, so the build doesn't swamp the hit
       const level = (kit.snareGain ?? 1) * v * (n.pitch === 40 ? 0.6 : 1);
-      (kit.snare ?? [{ id: kit.clap[0], gain: 0.95 }]).forEach((layer, i) => {
+      // the backbeat sits on the grid; only its bright second layer leans back, like Takt's
+      const layers = kit.snare ?? [{ id: kit.clap[0], gain: 0.95 }, { id: kit.clap[1], gain: 0.34, delay: BACKBEAT_PUSH, hp: 2500 }];
+      layers.forEach((layer, i) => {
         const dest = layer.hp ? bandPass(rt, input, time, layer.hp, 14000) : input;
         hit(rt, bank.get(layer.id), dest, time + (layer.delay ?? 0), {
           gain: layer.gain * level, rate: (layer.rate ?? 1) * (1 + (i % 2 ? b : a) * 0.015), dur: layer.len, release: 0.025,
@@ -291,7 +315,7 @@ function bass(rt: Runtime, n: NoteEvent, time: number): void {
     // only the fundamental: anything higher in this layer reads as a synth
     const low = ctx.createBiquadFilter();
     low.type = "lowpass";
-    low.frequency.value = 120 + v * 50;
+    low.frequency.value = 85 + v * 30; // the sub notes sit from 41 to 62 Hz
     low.connect(decaying(rt, input, time, voice.decay * (0.85 + (b + 1) * 0.15)));
     dest = low;
   }
@@ -308,8 +332,9 @@ function bass(rt: Runtime, n: NoteEvent, time: number): void {
   if (voice.body) {
     // the knock is a drum, so it keeps its own pitch whatever the key
     const { id, gain, tone, rate: speed } = voice.body;
-    const band = bandPass(rt, input, time, 100, tone * (0.7 + v * 0.6) * (1 + b * 0.15));
-    hit(rt, bank.get(id), decaying(rt, band, time, 0.035), time, { gain: gain * v * (kit.trim?.bass ?? 1), rate: speed * (1 + a * 0.03), dur: 0.11, release: 0.03 });
+    // from 160 Hz up, so the knock doesn't thicken the low mids the references keep clear
+    const band = bandPass(rt, input, time, 160, tone * (0.7 + v * 0.6) * (1 + b * 0.15));
+    hit(rt, bank.get(id), decaying(rt, band, time, 0.035), time, { gain: 0.6 * gain * v * (kit.trim?.bass ?? 1), rate: speed * (1 + a * 0.03), dur: 0.11, release: 0.03 });
   }
 }
 
@@ -341,10 +366,11 @@ function stab(rt: Runtime, n: NoteEvent, time: number): void {
     const z = pickZone(instrument.zones, n.pitch + off);
     hit(rt, bank.get(z.id), body, time, { gain: (0.42 * v * instrument.gain * (kit.trim?.stab ?? 1)) / Math.sqrt(offsets.length), rate: z.rate, dur, release: 0.12, attack: 0.004, lane: "stab" });
   }
-  // the echo hears the darkened, decayed stab, not the raw sample
+  // the echo hears the darkened, decayed stab, not the raw sample. Kept mostly dry:
+  // the wet chord was most of the mud between 250 Hz and 2 kHz, and the references are dry
   const [hall, echo] = kit.sends.stab;
-  sendTo(rt, f, graph.gates.stab.hall, hall);
-  sendTo(rt, f, graph.gates.stab.echo, echo);
+  sendTo(rt, f, graph.gates.stab.hall, hall * STAB_WET);
+  sendTo(rt, f, graph.gates.stab.echo, echo * STAB_WET);
 }
 
 // recording, speed, where to start, level

@@ -19,7 +19,7 @@ export function StylePicker({ studio }: { studio: Studio }) {
       <div className="style-grid">
         {STYLES.map((s) => (
           <label key={s.id} className={studio.config.style === s.id ? "style-card on" : "style-card"}>
-            <input type="radio" name="style" checked={studio.config.style === s.id} onChange={() => studio.update({ style: s.id })} />
+            <input type="radio" name="style" checked={studio.config.style === s.id} onChange={() => studio.update({ style: s.id, ...(s.tempo && { tempo: s.tempo }) })} />
             <strong>{s.label}</strong>
             <span>{s.desc}</span>
             <small className="shelf" title="Where Beatport files it">{s.store}</small>

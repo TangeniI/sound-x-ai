@@ -14,7 +14,7 @@ describe("DJ version", () => {
     it(`${family}: 32 bars of drums alone at each end, six to eight minutes long`, () => {
       const t = generativeEngine.generate({ ...DEFAULT_CONFIG, family, dj: true });
       const bars = t.sections.reduce((n, s) => Math.max(n, s.startBar + s.bars), 0);
-      expect(bars).toBe(240);
+      expect(bars).toBe(272);
       expect(t.durationSec / 60).toBeGreaterThanOrEqual(6);
       expect(t.durationSec / 60).toBeLessThanOrEqual(8);
       // phrases run in eights: a short break and build share one, and every drop lands on one
@@ -35,10 +35,10 @@ describe("DJ version", () => {
   }
 
   it("is the same track inside, moved 32 bars on, with the rumble shut at the ends", () => {
-    const plain = generativeEngine.generate({ ...DEFAULT_CONFIG, bars: 176 });
+    const plain = generativeEngine.generate({ ...DEFAULT_CONFIG, bars: 208 });
     const t = generativeEngine.generate({ ...DEFAULT_CONFIG, dj: true });
     const off = DJ_BARS * SPB;
-    const inside = t.notes.filter((n) => n.step >= off && n.step < off + 176 * SPB).map((n) => `${n.step - off}:${n.pitch}:${n.instrument}`).sort();
+    const inside = t.notes.filter((n) => n.step >= off && n.step < off + 208 * SPB).map((n) => `${n.step - off}:${n.pitch}:${n.instrument}`).sort();
     expect(inside).toEqual(plain.notes.map((n) => `${n.step}:${n.pitch}:${n.instrument}`).sort());
     const low = t.automation.filter((a) => a.param === "low");
     const barSec = t.stepSec * SPB;
@@ -79,6 +79,7 @@ describe("DJ tags", () => {
   it("file each style on a store's shelf", () => {
     expect(storeGenre("driving")).toBe("Techno (Peak Time / Driving)");
     expect(storeGenre("hypnotic")).toBe("Techno (Raw / Deep / Hypnotic)");
+    expect(storeGenre("hard")).toBe("Hard Techno"); // its own genre on Beatport, not a shelf of Techno
     const text = new TextDecoder("latin1").decode(id3({ title: "x", bpm: 138, key: "Am", camelot: "8A", genre: storeGenre("warehouse") }));
     expect(text).toContain("Techno (Raw / Deep / Hypnotic)");
   });

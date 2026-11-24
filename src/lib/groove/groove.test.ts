@@ -150,10 +150,13 @@ for (const f of FAMILIES) {
       }
     });
 
-    it("keeps its swing small and its kick on the grid", () => {
+    it("plays dead on the grid, like the references", () => {
       const t = gen(over);
       for (const n of t.notes.filter((x) => x.pitch === 36 && x.instrument === "drums")) expect(n.startTime).toBeCloseTo(n.step * t.stepSec, 9);
-      expect(f.swing * t.stepSec).toBeLessThanOrEqual(0.015);
+      // no swing and no lean: every hit within 2 ms of its step
+      for (const n of t.notes.filter((x) => x.instrument === "drums" || x.instrument === "perc")) {
+        expect(Math.abs(n.startTime - n.step * t.stepSec)).toBeLessThan(0.002);
+      }
     });
   });
 }

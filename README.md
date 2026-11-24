@@ -8,7 +8,7 @@
 
 A dark groove techno studio that runs entirely in your browser. It writes hypnotic,
 percussion-led tracks and plays them through recordings of real drum machines, metal, keys
-and rooms. Groove is built from twelve hand-written families. In the other five styles, a neural network trained on
+and rooms. Groove is built from twelve hand-written families. In the other six styles, a neural network trained on
 real riffs writes the sequence line. There's no backend, no API key and no account.
 
 **In short:** I trained a GRU from scratch in NumPy, with hand-written back-propagation and
@@ -19,11 +19,11 @@ real recordings and 2 measured rooms, with the same signal path for live playbac
 
 ## What you can do
 
-- Press play and Groove opens on eight bars at the peak. Full track plays the arrangement, up to five minutes.
+- Press play and Groove opens on eight bars at the peak. Full track plays the arrangement, up to 208 bars (about six minutes, a full club length).
 - Randomise a Groove: it picks a family, then varies it within that family's limits.
 - Turn on Taste, and Randomise learns which families and settings you keep and skip. It stays in your browser (see [Learning your taste](#learning-your-taste)).
 - Undo, redo and go back to your last 30 takes, which survive a reload.
-- Pick from six styles: Groove, Hypnotic, Percussive, Raw, Dub and Acid. Each shows the Beatport shelf it belongs on (Peak Time / Driving, or Raw / Deep / Hypnotic), and files carry it as their genre.
+- Pick from seven styles: Groove, Hypnotic, Percussive, Raw, Dub, Acid and Hard. Each shows the Beatport shelf or genre it belongs on (Peak Time / Driving, Raw / Deep / Hypnotic, or Hard Techno), and files carry it as their genre. Hard starts at 156 BPM, with a driven kick and a distorted rumble.
 - See every layer enter and leave on one screen, and click to play from any bar.
 - Change energy, light, density and key as it plays, without stopping it.
 - Mute, solo, re-roll or lock each part. With a part locked, New take and Randomise rewrite only the others.
@@ -34,7 +34,7 @@ real recordings and 2 measured rooms, with the same signal path for live playbac
 - Drop in an audio file to set the tempo, key, energy and light. Nothing leaves your device.
 - Loop 4, 8 or 16 bars, and export the loop as a WAV that repeats without a click, as stems or as MIDI.
 - Export the whole track as WAV or AIFF, seven stems in one zip (the kick on its own) or MIDI, at 24 or 16-bit and 48 or 44.1 kHz, without the parts you muted. Files are tagged with tempo, key and Camelot number for Rekordbox, Traktor and Serato. Or share a link that reopens the exact track.
-- Make a DJ version of a Groove: about seven minutes, with 32 bars of drums alone at each end (kick and hats first) and the rumble held back there, so it mixes in and out.
+- Make a DJ version of a Groove: about eight minutes, with 32 bars of drums alone at each end (kick and hats first) and the rumble held back there, so it mixes in and out.
 - Export DJ tools: the peak's drums as a 16-bar loop, the same without the kick, and the build into the first drop, as tagged WAVs plus the drums as MIDI.
 - Drag the loop's MIDI or WAV straight from the Export menu into your DAW (Chrome and Edge).
 - Play the track on your own instruments over Web MIDI, with clock, start, stop and song position so a DAW follows (Chrome, Edge, Firefox).
@@ -43,7 +43,7 @@ real recordings and 2 measured rooms, with the same signal path for live playbac
 
 Each of the twelve families has one lead idea: a stab, a rolling low end, a percussion hook,
 a chopped texture, a squared 808 line or a sequence. It also has its own kit, tempo and key
-range, swing, clap or snare role, and rules for what the other parts leave out.
+range, clap or snare role, and rules for what the other parts leave out.
 
 - **The idea is there from the first bar** and the other parts leave it room.
 - **A track has a beginning, a middle and an end.** It states the idea bare and filtered, then
@@ -60,12 +60,16 @@ from them is used.
 
 ## How every style works
 
-- **The kick is the grid.** Every other voice sits behind it by its own amount, with swing
-  and a little drift from hit to hit.
+- **Everything is on the grid.** Two club records measured within 2 ms of it, with no swing,
+  so every voice plays dead on its step with only a hair of drift. The one push is a bright
+  layer of the backbeat, 24 ms late.
+- **Mixed against real records.** The balance across eight bands, the sub holding between
+  kicks, and loudness (about -7.5 LUFS for Groove, -5 for Hard) were measured on reference
+  tracks and matched within a couple of dB. The chord stays mostly dry, out of the low mids.
 - **Loops turn against the bar.** Percussion loops over 3, 5, 6, 7, 12 or more
   steps, so a short pattern takes several bars to repeat.
 - **Arrangement is addition and subtraction.** Layers enter and leave through the track, with
-  small changes every 4 bars and dropouts at the end of some 8-bar phrases.
+  small changes every 4 bars, and the sub leaves for a bar or two at the end of each 16-bar phrase.
 - **The low end is drums.** Outside the Acid style the bass never leaves the tonic, and its groove is
   in the gaps and the weight.
 - **The harmony stays on the tonic.** A test checks every pitched lane in every style and key.

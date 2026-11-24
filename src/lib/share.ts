@@ -12,10 +12,10 @@ import { LANES } from "../types";
 import { isOwnSound, SOUND_CHOICES } from "./audio/kits";
 import { familyById } from "./groove/families";
 
-const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "tribal", "dub", "warehouse"];
+const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "tribal", "dub", "warehouse", "hard"];
 const RENAMED: Record<string, StyleId> = { melodic: "tribal" }; // links made before the dark groove rebuild
 const MAX_EDITS = 1000;
-const MAX_STEP = 240 * 16; // the DJ version's length
+const MAX_STEP = 272 * 16; // the DJ version's length: 208 bars and 32 of drums at each end
 const RIFF_STEPS = 32;
 const MAX_TOKEN = 63;
 const MODES: ModeChoice[] = ["auto", "minor", "major"];
@@ -109,7 +109,7 @@ export function parseConfigFromURL(search?: string): { config: Partial<Generator
     return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : undefined;
   };
 
-  const b = int("b", 16, 176); if (b != null) out.bars = b;
+  const b = int("b", 16, 208); if (b != null) out.bars = b;
   const t = int("t", 90, 175); if (t != null) out.tempo = t;
   const k = int("k", 0, 11); if (k != null) out.rootPitch = k;
   const r = int("r", 1, 0x7fffffff); if (r != null) out.seed = r;
@@ -188,7 +188,7 @@ export function cleanControls(raw: unknown): Partial<GeneratorConfig> {
     if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi) return;
     out[key] = whole ? Math.round(v) : v;
   };
-  num("bars", 16, 176, true);
+  num("bars", 16, 208, true);
   num("tempo", 90, 175, true);
   num("rootPitch", 0, 11, true);
   for (const key of ["energy", "valence", "density", "variation"] as const) num(key, 0, 1);

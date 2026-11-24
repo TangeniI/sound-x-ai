@@ -26,8 +26,6 @@ export interface Family {
   about:   string;
   tempo:   [number, number];
   keys:    number[];      // roots whose sub sits from E1 to B1
-  swing:   number;        // share of a 16th the off-steps fall late
-  clapLate: number;       // seconds the backbeat leans behind the kick
   idea: {
     lane:   Lane;
     lines:  string[];
@@ -123,7 +121,7 @@ const [E, F, FS, G, GS, A, AS, B] = [4, 5, 6, 7, 8, 9, 10, 11];
 export const FAMILIES: Family[] = [
   {
     id: "backbone", name: "Backbone", about: "A heavy backbeat, answered late by a low stab",
-    tempo: [132, 135], keys: [F, FS, G], swing: 0.05, clapLate: 0.005,
+    tempo: [136, 139], keys: [F, FS, G],
     idea: {
       lane: "stab", length: 1.3, alt: 7, lo: 48, chord: [0, 12],
       lines: [
@@ -149,7 +147,7 @@ export const FAMILIES: Family[] = [
   },
   {
     id: "floor", name: "Rolling Floor", about: "The low end is the hook, with one late clap",
-    tempo: [137, 141], keys: [E, F, G], swing: 0.09, clapLate: 0.009,
+    tempo: [141, 145], keys: [E, F, G],
     idea: {
       lane: "bass", length: 0.8, alt: 0, lo: 28,
       lines: [
@@ -176,7 +174,7 @@ export const FAMILIES: Family[] = [
   },
   {
     id: "steel", name: "Loose Steel", about: "A hook played on struck metal, claps between it",
-    tempo: [140, 144], keys: [FS, G, GS], swing: 0.03, clapLate: 0.004,
+    tempo: [144, 148], keys: [FS, G, GS],
     idea: {
       lane: "perc", length: 1, alt: 0, lo: 0,
       lines: [
@@ -204,7 +202,7 @@ export const FAMILIES: Family[] = [
   },
   {
     id: "night", name: "Night Shift", about: "One dark fifth thrown into echo over a straight clap",
-    tempo: [136, 140], keys: [F, G, A], swing: 0.1, clapLate: 0.009,
+    tempo: [140, 144], keys: [F, G, A],
     idea: {
       lane: "stab", length: 2.4, alt: 12, lo: 48, chord: [0, 7],
       lines: [
@@ -231,7 +229,7 @@ export const FAMILIES: Family[] = [
   },
   {
     id: "hands", name: "Hand to Hand", about: "Hands and skins in call and answer",
-    tempo: [135, 139], keys: [G, GS, A], swing: 0.12, clapLate: 0.011,
+    tempo: [139, 143], keys: [G, GS, A],
     idea: {
       lane: "perc", length: 1, alt: 0, lo: 0,
       lines: [
@@ -258,7 +256,7 @@ export const FAMILIES: Family[] = [
   },
   {
     id: "wire", name: "Live Wire", about: "A squared 808 line that stays on one note",
-    tempo: [133, 137], keys: [E, G, A], swing: 0.07, clapLate: 0.006,
+    tempo: [137, 141], keys: [E, G, A],
     idea: {
       lane: "lead", length: 0.85, alt: 12, lo: 43,
       lines: [
@@ -286,7 +284,7 @@ export const FAMILIES: Family[] = [
   },
   {
     id: "concrete", name: "Concrete", about: "A scrape chopped into the groove, with a huge snare",
-    tempo: [132, 136], keys: [E, FS, GS], swing: 0.04, clapLate: 0.005,
+    tempo: [136, 140], keys: [E, FS, GS],
     idea: {
       lane: "pad", length: 1.5, alt: 0, lo: 48,
       lines: [
@@ -314,7 +312,7 @@ export const FAMILIES: Family[] = [
   },
   {
     id: "signal", name: "Signal", about: "One coded note repeating, answered an octave up",
-    tempo: [140, 144], keys: [A, AS, B], swing: 0.06, clapLate: 0.006,
+    tempo: [144, 148], keys: [A, AS, B],
     idea: {
       lane: "lead", length: 0.6, alt: 12, lo: 52,
       lines: [
@@ -341,7 +339,7 @@ export const FAMILIES: Family[] = [
   },
   {
     id: "undertow", name: "Undertow", about: "Tuned toms roll underneath and answer at the bar line",
-    tempo: [134, 138], keys: [F, G, AS], swing: 0.1, clapLate: 0.008,
+    tempo: [138, 142], keys: [F, G, AS],
     idea: {
       lane: "perc", length: 1, alt: 0, lo: 0,
       lines: [
@@ -368,7 +366,7 @@ export const FAMILIES: Family[] = [
   },
   {
     id: "exhaust", name: "Exhaust", about: "Bursts of machine air against a syncopated clap",
-    tempo: [141, 145], keys: [FS, A, B], swing: 0.02, clapLate: 0.004,
+    tempo: [145, 149], keys: [FS, A, B],
     idea: {
       lane: "pad", length: 0.9, alt: 0, lo: 48,
       lines: [
@@ -395,7 +393,7 @@ export const FAMILIES: Family[] = [
   },
   {
     id: "clockwork", name: "Clockwork", about: "Rims and clicks interlock, the clap cuts across",
-    tempo: [138, 142], keys: [E, GS, AS], swing: 0.08, clapLate: 0.007,
+    tempo: [142, 146], keys: [E, GS, AS],
     idea: {
       lane: "perc", length: 1, alt: 0, lo: 0,
       lines: [
@@ -422,7 +420,7 @@ export const FAMILIES: Family[] = [
   },
   {
     id: "splinter", name: "Splinter", about: "A choked, struck-key figure with a hard answering clap",
-    tempo: [137, 141], keys: [G, A, B], swing: 0.11, clapLate: 0.01,
+    tempo: [141, 145], keys: [G, A, B],
     idea: {
       lane: "lead", length: 0.7, alt: 7, lo: 64,
       lines: [
