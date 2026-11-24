@@ -184,6 +184,8 @@ const STEM_LEVEL = 0.5;   // room for the parts to add up
 // Measured against Takt "Groove Chaser": mids that stay out of the way (250 Hz-2 kHz
 // about 20 dB under the total), and a sub that holds between the kicks (see applyMix).
 const SYNTH_LEVEL = 0.5;
+// Train Fantôme folds to mono at 0.8 correlation; our grit was 0.48, and half of it cancelled on a mono system
+const GRIT_WIDTH = 0.3;
 const RUMBLE_BOOST = 6; // +15 dB: Takt's sub sits within a few dB of the kick all through the beat
 
 /** Dub-style tape delay: filtered, driven repeats with a slow wow in the time. */
@@ -222,7 +224,8 @@ export function buildGraph(ctx: BaseAudioContext, bank: SampleBank, { master = t
   const lowTone = filter(ctx, "lowshelf", 70, 0.7, -2.8);
   const mids = filter(ctx, "peaking", 1100, 0.8, -1.5);
   const box = filter(ctx, "peaking", 400, 0.7, -4); // Takt keeps 250-500 Hz about 20 dB under the total
-  const air = filter(ctx, "highshelf", 8500, 0.7, -7);
+  const air = filter(ctx, "highshelf", 8500, 0.7, -8);
+  const sheen = filter(ctx, "highshelf", 16000, 0.7, 6); // the references keep air above 18 kHz that the hats have and the old shelf took
   chain(masterIn, subsonic);
   if (master) {
     const glue = ctx.createDynamicsCompressor();
@@ -233,10 +236,10 @@ export function buildGraph(ctx: BaseAudioContext, bank: SampleBank, { master = t
     glue.knee.value = 10;
     const level = gainNode(ctx, MASTER_LEVEL * undoMakeup(-10, 1.6));
     const ceiling = saturator(ctx, ceilingCurve(), "4x");
-    chain(monoLows(ctx, subsonic), lowTone, mids, box, air, glue, level, ceiling.input);
+    chain(monoLows(ctx, subsonic), lowTone, mids, box, air, sheen, glue, level, ceiling.input);
     ceiling.node.connect(out);
   } else {
-    chain(monoLows(ctx, subsonic), lowTone, mids, box, air, gainNode(ctx, STEM_LEVEL), out);
+    chain(monoLows(ctx, subsonic), lowTone, mids, box, air, sheen, gainNode(ctx, STEM_LEVEL), out);
   }
   out.connect(ctx.destination);
 
@@ -295,8 +298,12 @@ export function buildGraph(ctx: BaseAudioContext, bank: SampleBank, { master = t
   const gritHp = filter(ctx, "highpass", 750, 0.7);
   const gritLp = filter(ctx, "lowpass", 7000, 0.7);
   const grit = gainNode(ctx, 0);
-  chain(rumbleVerb, gainNode(ctx, 30), gritDrive.input); // the tail is quiet: push it well into the curve so it clips
-  chain(gritDrive.node, gritHp, gritLp, grit, widener(ctx, 0.013, 0.5, strips.rumble)); // mute and level with the rumble
+  // folded to mono first: the hall is stereo, and its two sides distorted apart cancel on a mono system
+  const gritMono = gainNode(ctx, 30); // the tail is quiet: push it well into the curve so it clips
+  gritMono.channelCount = 1;
+  gritMono.channelCountMode = "explicit";
+  chain(rumbleVerb, gritMono, gritDrive.input);
+  chain(gritDrive.node, gritHp, gritLp, grit, widener(ctx, 0.013, GRIT_WIDTH, strips.rumble)); // mute and level with the rumble
 
   /* bass: both layers share one gentle drive, so they read as one sound */
   const bassIn = gainNode(ctx, 1);

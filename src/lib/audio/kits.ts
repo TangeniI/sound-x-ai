@@ -61,6 +61,8 @@ export interface Kit {
   kickDrive?: number;
   /** Level of the rumble's distorted mids. */
   grit?:  number;
+  /** The lowest pitch (MIDI) the kick may be tuned to: a higher, tighter kick. */
+  kickFloor?: number;
   lead:   LeadVoice;
   /** Share of the kit level sent to hall / echo, per lane. */
   sends:  { stab: [number, number]; lead: [number, number]; perc: [number, number] };
@@ -163,8 +165,20 @@ export const KITS: Record<StyleId, Kit> = {
   },
   // Modelled on TRAIN FANTOME "DRONE (LESSSS EDIT)": 156 BPM, a kick driven until most of
   // its energy sits between 250 Hz and 4 kHz, running 16ths on top. The drive and grit alone bring it to about -5 LUFS, as loud as that master
+  // Modelled on seven SoundCloud edits at 150-160 BPM: a kick with 4-8 dB more click than Takt's,
+  // a punchy offbeat bass, and the chord and hook 6-10 dB further forward than the other styles
+  bounce: {
+    kick: "kick_909_atk", kickRoot: 32.5, kickGain: 0.75, kickLen: 0.16, kickDrive: 2.2, grit: 0.4, tops: 0.45, kickFloor: 35.5,
+    clap: ["clap_909", "clap_hands"], rim: "rim_909",
+    hatC: ["hat_909_c", "hat_raw"], hatO: "hat_909_o", perc: ["perc_tap", "rim_909"], percTone: 6000,
+    bass: { sub: 0.24, decay: 0.08, body: { id: "kick_tek", gain: 1.5, tone: 480, rate: 1.7 } },
+    slam: 0.1,
+    lead: { zones: FM, cutoff: 1800, decay: 0.12, gain: 0.3 },
+    sends: { stab: [0.3, 0.3], lead: [0.22, 0.4], perc: [0.12, 0.14] },
+    trim: { stab: 2.8, lead: 2.2, pad: 1.4 },
+  },
   hard: {
-    kick: "kick_tek", kickRoot: 40.3, kickGain: 0.75, kickLen: 0.24, kickDrive: 7, grit: 2.6, tops: 1.4,
+    kick: "kick_tek", kickRoot: 40.3, kickGain: 0.75, kickLen: 0.24, kickDrive: 7, grit: 1.6, tops: 1.6,
     clap: ["clap_909", "clap_hands"], rim: "rim_909",
     hatC: ["hat_raw", "hat_909_c"], hatO: "hat_909_o", perc: ["rim_909", "anvil"], percTone: 5200,
     bass: { sub: 0.2, decay: 0.06 },

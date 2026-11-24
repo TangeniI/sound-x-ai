@@ -19,7 +19,7 @@ export function StylePicker({ studio }: { studio: Studio }) {
       <div className="style-grid">
         {STYLES.map((s) => (
           <label key={s.id} className={studio.config.style === s.id ? "style-card on" : "style-card"}>
-            <input type="radio" name="style" checked={studio.config.style === s.id} onChange={() => studio.update({ style: s.id, ...(s.tempo && { tempo: s.tempo }) })} />
+            <input type="radio" name="style" checked={studio.config.style === s.id} onChange={() => studio.update({ style: s.id, ...(s.tempo && { tempo: s.tempo }), ...(s.rootPitch != null && { rootPitch: s.rootPitch }) })} />
             <strong>{s.label}</strong>
             <span>{s.desc}</span>
             <small className="shelf" title="Where Beatport files it">{s.store}</small>
@@ -68,7 +68,7 @@ export default function Controls({ studio }: { studio: Studio }) {
       <div className="panel-head"><h2>Track</h2></div>
       <Slider id="tempo" label="Tempo" hint="Speed of the track" value={config.tempo} min={90} max={175} step={1} show={(v) => `${v} BPM`} onChange={(tempo) => update({ tempo })} />
       <Slider id="energy" label="Energy" hint="Drive, rumble, punch and ride" value={config.energy} show={percent} onChange={(energy) => update({ energy })} />
-      <Slider id="mood" label="Light" hint="Phrygian, then minor, then Dorian" value={config.valence} show={percent} onChange={(valence) => update({ valence })} />
+      <Slider id="mood" label="Light" hint={config.style === "bounce" ? "Minor, then major" : "Phrygian, then minor, then Dorian"} value={config.valence} show={percent} onChange={(valence) => update({ valence })} />
       <Slider id="density" label="Density" hint="How many 16ths are filled" value={config.density} show={percent} onChange={(density) => update({ density })} />
       <Slider id="variation" label="Variation" hint="How much each phrase changes" value={config.variation} show={percent} onChange={(variation) => update({ variation })} />
 

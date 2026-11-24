@@ -6,7 +6,7 @@ import { neuralRiff, type ModelJSON } from "./neural-engine";
 import type { GeneratorConfig, Lane, StyleId } from "../types";
 
 const base: GeneratorConfig = { ...DEFAULT_CONFIG, bars: 64 };
-const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "tribal", "dub", "warehouse", "hard"];
+const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "tribal", "dub", "warehouse", "hard", "bounce"];
 const gen = (over: Partial<GeneratorConfig> = {}) => generativeEngine.generate({ ...base, ...over });
 const lane = (t: ReturnType<typeof gen>, l: string) => t.notes.filter((n) => n.instrument === l);
 const pitches = (t: ReturnType<typeof gen>, l: string) => lane(t, l).map((n) => `${n.step}:${n.pitch}`);
@@ -302,5 +302,33 @@ describe("hostile input", () => {
   it("drops edits past the end of the track", () => {
     const t = generativeEngine.generate({ ...base, bars: 16 }, [{ op: "add", lane: "bass", step: 900, pitch: 33 }]);
     expect(t.notes.some((n) => n.step === 900)).toBe(false);
+  });
+});
+
+describe("bounce", () => {
+  const bounce = (over: Partial<GeneratorConfig> = {}) => gen({ style: "bounce", tempo: 152, rootPitch: 3, ...over });
+
+  it("goes major on the brighter half of the mood, and stays minor on the darker", () => {
+    expect(bounce({ valence: 0.8 }).tonality).toBe("major");
+    expect(bounce({ valence: 0.3 }).tonality).toBe("minor");
+    expect(bounce({ valence: 0.8, mode: "minor" }).tonality).toBe("minor");
+  });
+
+  it("puts the bass on the offbeat and the hook up front", () => {
+    const t = bounce({ bars: 64 });
+    const bass = t.notes.filter((n) => n.instrument === "bass");
+    expect(bass.length).toBeGreaterThan(0);
+    // every bass note sits off the kick, most of them on the 'and' of the beat
+    expect(bass.every((n) => n.step % 4 !== 0)).toBe(true);
+    expect(bass.filter((n) => n.step % 4 === 2).length / bass.length).toBeGreaterThan(0.6);
+    // the sequence plays far more of the riff than in the dark styles
+    const lead = (s: StyleId) => gen({ style: s, bars: 64 }).notes.filter((n) => n.instrument === "lead").length;
+    expect(lead("bounce")).toBeGreaterThan(2 * lead("hard"));
+    // a higher, tighter kick than the dark styles: 65-93 Hz in every key, as in the edits it was measured on
+    for (let rootPitch = 0; rootPitch < 12; rootPitch++) {
+      const hz = 440 * 2 ** ((t.kit.kickRoot + bounce({ rootPitch }).mix.kickTune - 69) / 12);
+      expect(hz).toBeGreaterThan(64);
+      expect(hz).toBeLessThan(94);
+    }
   });
 });

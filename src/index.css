@@ -168,7 +168,7 @@ small,
 
 .style-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
@@ -864,8 +864,7 @@ legend {
 @media (max-width: 1280px) {
   .brand p { flex-basis: 100%; }
   .row { grid-template-columns: minmax(0, 1fr); }
-  .style-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .style-card:first-child { grid-column: 1 / -1; } /* Groove gets the top row, the other six fill two */
+  .style-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 /* the transport's buttons need two rows well before the layout changes */

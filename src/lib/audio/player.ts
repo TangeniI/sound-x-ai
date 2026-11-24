@@ -78,13 +78,14 @@ export class Player {
   }
 
   async prepare(track: Track, onProgress?: (p: number) => void): Promise<void> {
-    await sampleBank.ensure(this.context(), trackSamples(track), onProgress);
+    const ctx = this.context();
+    await sampleBank.at(ctx.sampleRate).ensure(ctx, trackSamples(track), onProgress);
   }
 
   private ensureGraph(track: Track): Graph {
     const ctx = this.context();
     if (!this.graph) {
-      this.graph = buildGraph(ctx, sampleBank);
+      this.graph = buildGraph(ctx, sampleBank.at(ctx.sampleRate));
       this.analyser = ctx.createAnalyser();
       this.analyser.fftSize = 8192; // enough to tell the kick from the sub
       this.analyser.smoothingTimeConstant = 0.55;
@@ -116,7 +117,7 @@ export class Player {
     const graph = this.ensureGraph(track);
     this.applyStrips();
     const previous = this.rt;
-    this.rt = makeRuntime(this.context(), graph, sampleBank, track, this.active);
+    this.rt = makeRuntime(this.context(), graph, sampleBank.at(this.context().sampleRate), track, this.active);
     this.rt.openHat = previous?.openHat;
     this.setEvents(track);
     if (this.range) {

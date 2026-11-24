@@ -8,7 +8,7 @@ export const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A",
  * `store` is the shelf a store files the style on. Beatport splits techno in two:
  * Peak Time / Driving, and Raw / Deep / Hypnotic. Files carry it as their genre.
  */
-export const STYLES: { id: StyleId; label: string; desc: string; store: string; tempo?: number }[] = [
+export const STYLES: { id: StyleId; label: string; desc: string; store: string; tempo?: number; rootPitch?: number }[] = [
   { id: "driving", label: "Groove", desc: "Twelve families, one idea each", store: "Peak Time / Driving" },
   { id: "hypnotic", label: "Hypnotic", desc: "Turning loops, long echoes", store: "Raw / Deep / Hypnotic" },
   { id: "tribal", label: "Percussive", desc: "Tuned toms, taps and hand claps", store: "Peak Time / Driving" },
@@ -16,6 +16,8 @@ export const STYLES: { id: StyleId; label: string; desc: string; store: string; 
   { id: "dub", label: "Dub", desc: "One chord, tape and space", store: "Raw / Deep / Hypnotic" },
   { id: "acid", label: "Acid", desc: "Accent, slide, resonance", store: "Peak Time / Driving" },
   { id: "hard", label: "Hard", desc: "Driven kick, 156 BPM, loud", store: "Hard Techno", tempo: 156 },
+  // most of the SoundCloud edits it was measured on sit at 150-155 BPM, around D# minor / F# major
+  { id: "bounce", label: "Bounce", desc: "Offbeat bass, chords and a hook up front", store: "Hard Techno", tempo: 152, rootPitch: 3 },
 ];
 
 /** The genre a store would file a track under, as written in its tags. */

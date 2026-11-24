@@ -12,7 +12,7 @@ import { LANES } from "../types";
 import { isOwnSound, SOUND_CHOICES } from "./audio/kits";
 import { familyById } from "./groove/families";
 
-const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "tribal", "dub", "warehouse", "hard"];
+const STYLES: StyleId[] = ["driving", "hypnotic", "acid", "tribal", "dub", "warehouse", "hard", "bounce"];
 const RENAMED: Record<string, StyleId> = { melodic: "tribal" }; // links made before the dark groove rebuild
 const MAX_EDITS = 1000;
 const MAX_STEP = 272 * 16; // the DJ version's length: 208 bars and 32 of drums at each end

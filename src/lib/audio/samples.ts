@@ -16,7 +16,26 @@ export class SampleBank {
   private buffers = new Map<string, AudioBuffer>();
   private pending = new Map<string, Promise<void>>();
   private flipped = new Map<string, AudioBuffer>();
+  private rate?: number;
+  private others = new Map<number, SampleBank>();
   readonly failed = new Set<string>();
+
+  /**
+   * The bank decoded at another sample rate. A recording played into a context
+   * at a different rate is resampled by the browser as it plays, which Chrome
+   * does by straight-line interpolation, so an export at twice the rate decodes
+   * its own copies (the browser's decoder resamples properly).
+   */
+  at(rate: number): SampleBank {
+    if (this.rate == null || this.rate === rate) {
+      this.rate = rate;
+      return this;
+    }
+    let bank = this.others.get(rate);
+    if (!bank) this.others.set(rate, (bank = new SampleBank()));
+    bank.rate = rate;
+    return bank;
+  }
 
   has(id: string): boolean {
     return this.buffers.has(id);
@@ -44,6 +63,7 @@ export class SampleBank {
 
   /** Fetch + decode everything in `ids`, reporting 0–1 progress. */
   async ensure(ctx: BaseAudioContext, ids: string[], onProgress: (p: number) => void = () => {}): Promise<void> {
+    this.rate ??= ctx.sampleRate;
     const unique = [...new Set(ids)];
     let done = 0;
     await Promise.all(unique.map(async (id) => {

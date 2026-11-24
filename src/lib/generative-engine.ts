@@ -36,6 +36,8 @@ const SCALES = {
 function chooseScale(cfg: GeneratorConfig): { scale: readonly number[]; tonality: "minor" | "major" } {
   if (cfg.mode === "major") return { scale: SCALES.major, tonality: "major" };
   if (cfg.mode === "minor") return { scale: SCALES["natural-minor"], tonality: "minor" };
+  // the edits Bounce was measured on are as often major as minor: the brighter half goes major
+  if (cfg.style === "bounce") return cfg.valence < 0.55 ? { scale: SCALES["natural-minor"], tonality: "minor" } : { scale: SCALES.major, tonality: "major" };
   if (cfg.valence < 0.3) return { scale: SCALES.phrygian, tonality: "minor" };
   if (cfg.valence < 0.62) return { scale: SCALES["natural-minor"], tonality: "minor" };
   return { scale: SCALES.dorian, tonality: "minor" };
@@ -161,6 +163,13 @@ const STYLES: Record<StyleId, Style> = {
     bass: "sub", clap: "sparse", openHats: [2, 10], hatAccent: [0.7, 0.5, 1, 0.5],
     toms: 0.6, loops: [3, 7, 12], stabs: [{ hits: [6], len: 32 }, { hits: [10], len: 24 }], stabLen: 1.5, voicing: [0, 7],
     leadKeep: 0.22, leadLen: 0.6, pump: 0.85, space: 0.42, echo: 0.28, rumble: 0.9,
+  },
+  // Measured on seven SoundCloud edits (150-160 BPM, mostly): the offbeat bass and the chords
+  // carry them, with 250 Hz-2 kHz 6-10 dB louder than in Takt, and a hook on top
+  bounce: {
+    bass: "offbeat", clap: "clap", openHats: [2, 6, 10, 14], hatAccent: [0.7, 0.45, 1, 0.6],
+    toms: 0.15, loops: [3, 6, 8], stabs: [{ hits: [2, 6], len: 16 }, { hits: [6, 14], len: 16 }, { hits: [3, 10], len: 16 }], stabLen: 1.6, voicing: [0, 2, 4],
+    leadKeep: 0.8, leadLen: 1.7, pump: 0.82, space: 0.4, echo: 0.42, rumble: 0.55,
   },
   hard: {
     bass: "sub", clap: "clap", openHats: [2, 6, 10, 14], hatAccent: [0.8, 0.55, 1, 0.65],
@@ -622,9 +631,12 @@ function writeFx(c: WriteContext): void {
 }
 
 function mixFor(cfg: GeneratorConfig, style: Pick<Style, "pump" | "space" | "echo" | "rumble">, kit: Kit): MixParams {
-  // tune the kick to the root or fifth, whichever needs the smaller shift
-  const tuneTo = (pitch: number) => {
-    const shift = (target: number) => ((target - pitch) % 12 + 18) % 12 - 6;
+  // tune the kick to the root or fifth, whichever needs the smaller shift, and never under the kit's floor
+  const tuneTo = (pitch: number, floor = -Infinity) => {
+    const shift = (target: number) => {
+      const s = ((target - pitch) % 12 + 18) % 12 - 6;
+      return pitch + s < floor ? s + 12 : s;
+    };
     const [root, fifth] = [shift(cfg.rootPitch), shift(cfg.rootPitch + 7)];
     return Math.abs(root) <= Math.abs(fifth) ? root : fifth;
   };
@@ -635,7 +647,7 @@ function mixFor(cfg: GeneratorConfig, style: Pick<Style, "pump" | "space" | "ech
     echo: clamp(style.echo),
     brightness: clamp(cfg.valence * 0.6 + cfg.energy * 0.3 + 0.1),
     pump: clamp(style.pump * (0.65 + cfg.energy * 0.5)),
-    kickTune: tuneTo(kit.kickRoot),
+    kickTune: tuneTo(kit.kickRoot, kit.kickFloor),
     rumbleTune: tuneTo(RUMBLE_ROOT),
     grit: kit.grit ?? 0,
   };

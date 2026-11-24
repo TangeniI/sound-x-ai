@@ -8,7 +8,7 @@
 
 A dark groove techno studio that runs entirely in your browser. It writes hypnotic,
 percussion-led tracks and plays them through recordings of real drum machines, metal, keys
-and rooms. Groove is built from twelve hand-written families. In the other six styles, a neural network trained on
+and rooms. Groove is built from twelve hand-written families. In the other seven styles, a neural network trained on
 real riffs writes the sequence line. There's no backend, no API key and no account.
 
 **In short:** I trained a GRU from scratch in NumPy, with hand-written back-propagation and
@@ -23,7 +23,7 @@ real recordings and 2 measured rooms, with the same signal path for live playbac
 - Randomise a Groove: it picks a family, then varies it within that family's limits.
 - Turn on Taste, and Randomise learns which families and settings you keep and skip. It stays in your browser (see [Learning your taste](#learning-your-taste)).
 - Undo, redo and go back to your last 30 takes, which survive a reload.
-- Pick from seven styles: Groove, Hypnotic, Percussive, Raw, Dub, Acid and Hard. Each shows the Beatport shelf or genre it belongs on (Peak Time / Driving, Raw / Deep / Hypnotic, or Hard Techno), and files carry it as their genre. Hard starts at 156 BPM, with a driven kick and a distorted rumble.
+- Pick from eight styles: Groove, Hypnotic, Percussive, Raw, Dub, Acid, Hard and Bounce. Each shows the Beatport shelf or genre it belongs on (Peak Time / Driving, Raw / Deep / Hypnotic, or Hard Techno), and files carry it as their genre. Hard starts at 156 BPM, with a driven kick and a distorted rumble. Bounce starts at 152 BPM in D# minor, with an offbeat bass, piano chords and a hook up front.
 - See every layer enter and leave on one screen, and click to play from any bar.
 - Change energy, light, density and key as it plays, without stopping it.
 - Mute, solo, re-roll or lock each part. With a part locked, New take and Randomise rewrite only the others.
@@ -64,8 +64,13 @@ from them is used.
   so every voice plays dead on its step with only a hair of drift. The one push is a bright
   layer of the backbeat, 24 ms late.
 - **Mixed against real records.** The balance across eight bands, the sub holding between
-  kicks, and loudness (about -7.5 LUFS for Groove, -5 for Hard) were measured on reference
-  tracks and matched within a couple of dB. The chord stays mostly dry, out of the low mids.
+  kicks, and loudness (about -7.5 LUFS for Groove, -5 for Hard, -7 for Bounce) were measured on
+  reference tracks and matched within a couple of dB, up to 22 kHz. The chord stays mostly dry,
+  out of the low mids, except in Bounce, where the chord and hook carry the track.
+- **Clean at the top and at the peaks.** Each hit's velocity filter follows the analog curve to the top
+  of the band (the browser's own low-pass dulls everything above 16 kHz), and every export is held
+  under -1 dBTP by a look-ahead true-peak limiter, so it doesn't distort on a converter or in an MP3.
+  Hard's distortion is folded to mono before it is widened, so it survives a mono club system.
 - **Loops turn against the bar.** Percussion loops over 3, 5, 6, 7, 12 or more
   steps, so a short pattern takes several bars to repeat.
 - **Arrangement is addition and subtraction.** Layers enter and leave through the track, with
@@ -204,7 +209,7 @@ src/
     ├── midi.ts               MIDI messages, clock and song position
     ├── zip.ts                stems zip, no dependency
     └── audio/                samples, kits, sound swaps, your own samples, graph, voices, player,
-                              render, loop slices, stems, DJ tools, WAV/AIFF tags
+                              render, true-peak limiter, loop slices, stems, DJ tools, WAV/AIFF tags
 ml/                           corpus builder, trainer, results, model card
 scripts/build_samples.py      builds the sample pack
 public/samples/               the recordings and their credits

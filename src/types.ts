@@ -43,7 +43,7 @@ export interface NoteEvent {
 }
 
 /** Styles — each picks its own patterns and its own recorded kit. */
-export type StyleId = "driving" | "hypnotic" | "acid" | "tribal" | "dub" | "warehouse" | "hard";
+export type StyleId = "driving" | "hypnotic" | "acid" | "tribal" | "dub" | "warehouse" | "hard" | "bounce";
 
 /** The twelve Groove families. Each is built around one idea. */
 export type FamilyId =

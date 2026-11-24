@@ -10,6 +10,9 @@
  *
  * A loop is rendered twice in a row and the second pass kept, so what rings over
  * from its end is already at its start, as it will be when it repeats in a DAW.
+ *
+ * A full mix ends in a true-peak limiter (lib/audio/master.ts); a loop is limited
+ * as a loop, so the gain at its end already leads into its start.
  */
 
 import type { NoteEvent, Track } from "../../types";
@@ -20,6 +23,7 @@ import { applyMix, buildGraph, CHANNELS, setChannel, type ChannelId } from "./gr
 import { trackSamples } from "./kits";
 import { sampleBank } from "./samples";
 import { automate, makeRuntime, startAtmosphere, trigger } from "./voices";
+import { truePeakLimit } from "./master";
 
 const TAIL_SEC = 3;
 const CHUNK_SEC = 1;
@@ -31,10 +35,12 @@ export interface RenderOptions {
   audible?:    ReadonlySet<ChannelId>;
   /** Fader levels in dB. The track's own, if not given. */
   levels?:     Partial<Record<ChannelId, number>>;
-  /** Sample rate of the result. The graph runs at the rate its recordings were decoded at. */
+  /** Sample rate of the result. The live context's rate, if not given. */
   rate?:       number;
   /** Leave off the ring-out after the last bar. */
   noTail?:     boolean;
+  /** Leave the peaks between samples alone (a loop limits once it is cut). */
+  noLimit?:    boolean;
   onProgress?: (done: number) => void;
 }
 
@@ -49,8 +55,9 @@ function latencyOf(sampleRate: number, master: boolean): Promise<number> {
   if (found) return found;
   found = (async () => {
     const ctx = new OfflineAudioContext(2, Math.ceil(sampleRate * 0.25), sampleRate);
-    await sampleBank.ensure(ctx, ["ir_hall", "ir_room"]);
-    const graph = buildGraph(ctx, sampleBank, { master });
+    const bank = sampleBank.at(sampleRate);
+    await bank.ensure(ctx, ["ir_hall", "ir_room"]);
+    const graph = buildGraph(ctx, bank, { master });
     const click = ctx.createBuffer(1, 64, sampleRate);
     click.getChannelData(0)[0] = 1;
     const src = ctx.createBufferSource();
@@ -68,23 +75,29 @@ function latencyOf(sampleRate: number, master: boolean): Promise<number> {
   return found;
 }
 
-/** Render a track to a buffer that starts on bar 1. */
+/**
+ * Render a track to a buffer that starts on bar 1. A full mix then has its
+ * peaks between samples held under -1 dBTP, which the graph's soft ceiling,
+ * seeing only the samples themselves, can't promise.
+ */
 export async function renderTrack(track: Track, sampleRate: number, options: RenderOptions = {}): Promise<AudioBuffer> {
-  const { only, audible, onProgress = () => {}, levels = track.config.levels ?? {}, rate, noTail } = options;
-  const trim = Math.round(LEAD_IN * sampleRate) + await latencyOf(sampleRate, !only);
-  const wanted = Math.ceil((track.durationSec + (noTail ? 0 : TAIL_SEC)) * sampleRate);
+  const { only, audible, onProgress = () => {}, levels = track.config.levels ?? {}, noTail } = options;
+  const rate = options.rate ?? sampleRate;
+  const trim = Math.round(LEAD_IN * rate) + await latencyOf(rate, !only);
+  const wanted = Math.ceil((track.durationSec + (noTail ? 0 : TAIL_SEC)) * rate);
   const length = wanted + trim;
-  const ctx = new OfflineAudioContext(2, length, sampleRate);
-  await sampleBank.ensure(ctx, trackSamples(track));
+  const ctx = new OfflineAudioContext(2, length, rate);
+  const bank = sampleBank.at(rate);
+  await bank.ensure(ctx, trackSamples(track));
   const plays = (id: ChannelId) => (!only || only.includes(id)) && (!audible || audible.has(id));
 
-  const graph = buildGraph(ctx, sampleBank, { master: !only });
+  const graph = buildGraph(ctx, bank, { master: !only });
   applyMix(graph, track.mix, track.stepSec * 4, 0);
   for (const id of CHANNELS) setChannel(graph, id, plays(id), undefined, levels[id] ?? 0);
-  if (plays("fx")) startAtmosphere(makeRuntime(ctx, graph, sampleBank, track), 0, track.durationSec);
+  if (plays("fx")) startAtmosphere(makeRuntime(ctx, graph, bank, track), 0, track.durationSec);
 
-  const rt = makeRuntime(ctx, graph, sampleBank, track);
-  const start = Math.round(LEAD_IN * sampleRate) / sampleRate;
+  const rt = makeRuntime(ctx, graph, bank, track);
+  const start = Math.round(LEAD_IN * rate) / rate;
   const events = [
     ...track.notes.map((note) => ({ time: note.startTime, note, auto: undefined })),
     ...track.automation.map((auto) => ({ time: auto.time, note: undefined, auto })),
@@ -101,7 +114,7 @@ export async function renderTrack(track: Track, sampleRate: number, options: Ren
 
   // Every connected node costs time on every audio block, even before it plays,
   // so queue a chunk at a time where the browser can pause an offline render.
-  const end = length / sampleRate;
+  const end = length / rate;
   if (typeof ctx.suspend === "function") {
     queueUntil(CHUNK_SEC);
     for (let t = CHUNK_SEC; t < end - 0.1; t += CHUNK_SEC) {
@@ -115,30 +128,24 @@ export async function renderTrack(track: Track, sampleRate: number, options: Ren
     queueUntil(Infinity);
   }
   const full = await ctx.startRendering();
-  const out = new AudioBuffer({ numberOfChannels: 2, length: wanted, sampleRate });
+  const out = new AudioBuffer({ numberOfChannels: 2, length: wanted, sampleRate: rate });
   for (let c = 0; c < 2; c++) out.copyToChannel(full.getChannelData(c).subarray(trim, trim + wanted), c);
-  return rate && rate !== sampleRate ? resample(out, rate) : out;
-}
-
-/** The browser's own resampler, for a 44.1 kHz file from a 48 kHz graph. */
-async function resample(buffer: AudioBuffer, rate: number): Promise<AudioBuffer> {
-  const ctx = new OfflineAudioContext(buffer.numberOfChannels, Math.round(buffer.duration * rate), rate);
-  const src = ctx.createBufferSource();
-  src.buffer = buffer;
-  src.connect(ctx.destination);
-  src.start();
-  return ctx.startRendering();
+  if (!only && !options.noLimit) truePeakLimit([out.getChannelData(0), out.getChannelData(1)], { sampleRate: rate });
+  return out;
 }
 
 /** Bars of a track as a seamless loop, exactly that long. */
 export async function renderLoop(track: Track, startBar: number, bars: number, sampleRate: number, options: RenderOptions = {}): Promise<AudioBuffer> {
   const twice = sliceTrack(track, startBar, bars, 2);
-  const audio = await renderTrack(twice, sampleRate, { ...options, noTail: true });
+  const audio = await renderTrack(twice, sampleRate, { ...options, noTail: true, noLimit: true });
   const len = bars * track.stepSec * 16;
   const from = Math.round(len * audio.sampleRate);
   const frames = Math.round(2 * len * audio.sampleRate) - from;
   const out = new AudioBuffer({ numberOfChannels: 2, length: frames, sampleRate: audio.sampleRate });
   for (let c = 0; c < 2; c++) out.copyToChannel(audio.getChannelData(c).subarray(from, from + frames), c);
+  if (!options.only && !options.noLimit) {
+    truePeakLimit([out.getChannelData(0), out.getChannelData(1)], { sampleRate: out.sampleRate, loop: true });
+  }
   return out;
 }
 

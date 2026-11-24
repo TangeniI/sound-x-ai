@@ -11,6 +11,7 @@ import { softClip, type ChannelId, type Graph } from "./graph";
 import type { SampleBank } from "./samples";
 import { hitNoise, PERC } from "../writing";
 import { chordOf, pickZone, SUB, TOM_ROOT, type Kit } from "./kits";
+import { matchedLowpass } from "./master";
 
 /** How far the backbeat's bright layer lands behind the beat: the one offset the references keep. */
 export const BACKBEAT_PUSH = 0.024;
@@ -49,6 +50,27 @@ interface HitOptions {
   lane?:    ChannelId;        // whose sends these are
 }
 
+const toneCache = new Map<string, { feedforward: number[]; feedback: number[] }>();
+const TONE_Q = 10 ** (0.6 / 20); // the 0.6 dB resonance the BiquadFilter had, as a linear Q
+
+/**
+ * A hit's velocity low-pass. Matched to the analog curve, so a bright hit keeps
+ * its air above 16 kHz; the browser's own low-pass squeezes it away at 48 kHz.
+ */
+function toneFilter(ctx: BaseAudioContext, hz: number): AudioNode {
+  if (typeof ctx.createIIRFilter !== "function") {
+    const f = ctx.createBiquadFilter();
+    f.type = "lowpass";
+    f.Q.value = 0.6;
+    f.frequency.value = hz;
+    return f;
+  }
+  const key = `${ctx.sampleRate}:${Math.round(hz / 25)}`;
+  let c = toneCache.get(key);
+  if (!c) toneCache.set(key, (c = matchedLowpass(Math.round(hz / 25) * 25, ctx.sampleRate, TONE_Q)));
+  return ctx.createIIRFilter(c.feedforward, c.feedback);
+}
+
 /** Play a buffer into `dest`. Returns the gain so a voice can reshape it. */
 function hit(rt: Runtime, buffer: AudioBuffer, dest: AudioNode, time: number, o: HitOptions = {}): { src: AudioBufferSourceNode; amp: GainNode } {
   const { ctx } = rt;
@@ -66,10 +88,7 @@ function hit(rt: Runtime, buffer: AudioBuffer, dest: AudioNode, time: number, o:
   }
   let tail: AudioNode = src;
   if (o.tone && o.tone < ctx.sampleRate / 2) {
-    const f = ctx.createBiquadFilter();
-    f.type = "lowpass";
-    f.Q.value = 0.6;
-    f.frequency.value = o.tone;
+    const f = toneFilter(ctx, o.tone);
     tail.connect(f);
     tail = f;
   }
