@@ -132,7 +132,7 @@ renders, and the balance is matched within a couple of dB in every band up to 22
 - **No overs.** Full mixes and loops end in a look-ahead true-peak limiter that holds them under
   -1 dBTP, so they don't distort on a converter or in an MP3. A loop is limited as a loop, so
   the gain at its end already leads into its start.
-- **Mono-safe.** The low end is mono, and Hard's distortion is folded to mono before it is
+- **Mono-safe.** The low end is mono, and the distorted rumble in Hard and Bounce is folded to mono before it is
   widened, so it survives a mono club system.
 - **Both sample rates are native.** At 44.1 kHz the recordings are decoded at 44.1 kHz rather than converted after the fact.
 
