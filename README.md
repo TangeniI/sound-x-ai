@@ -6,38 +6,78 @@
 
 **[▶ Open the live studio](https://sound-x-ai.vercel.app)**
 
-A dark groove techno studio that runs entirely in your browser. It writes hypnotic,
-percussion-led tracks and plays them through recordings of real drum machines, metal, keys
-and rooms. Groove is built from twelve hand-written families. In the other seven styles, a neural network trained on
-real riffs writes the sequence line. There's no backend, no API key and no account.
+A free techno groove machine that runs entirely in your browser. It writes dark, hypnotic,
+percussion-led techno and plays it through recordings of real drum machines, metal, pianos
+and rooms. Then you take it into your DAW: the loop, the stems, the MIDI, or a whole Ableton
+Live set. There's no backend, no API key and no account.
 
-**In short:** I trained a GRU from scratch in NumPy, with hand-written back-propagation and
-Adam, on 9,248 riffs from real MIDI (13,502 in all, split by artist). On artists it never
-saw, it scores 1.24 nats against 1.56 for the n-gram baseline. The forward pass is re-implemented in TypeScript and
-checked against Python by a test. A custom Web Audio engine then plays the result through
-real recordings and 2 measured rooms, with the same signal path for live playback and export.
+**How it's made, in short:** Groove, the main style, is written by rules drawn from measuring
+twelve reference records. In the other seven styles, the sequence line comes from a GRU I trained from scratch in NumPy,
+with hand-written back-propagation and Adam, on 9,248 riffs from real MIDI (13,502 in all,
+split by artist). On artists it never saw, it scores 1.24 nats against 1.56 for the n-gram
+baseline. The forward pass is re-implemented in TypeScript and checked against Python by a
+test. A custom Web Audio engine plays everything through real recordings and two measured
+rooms, with the same signal path for live playback and export. The mix is matched to
+commercial records by measurement.
 
-## What you can do
+## Make a track
 
-- Press play and Groove opens on eight bars at the peak. Full track plays the arrangement, up to 208 bars (about six minutes, a full club length).
-- Randomise a Groove: it picks a family, then varies it within that family's limits.
-- Turn on Taste, and Randomise learns which families and settings you keep and skip. It stays in your browser (see [Learning your taste](#learning-your-taste)).
-- Undo, redo and go back to your last 30 takes, which survive a reload.
-- Pick from eight styles: Groove, Hypnotic, Percussive, Raw, Dub, Acid, Hard and Bounce. Each shows the Beatport shelf or genre it belongs on (Peak Time / Driving, Raw / Deep / Hypnotic, or Hard Techno), and files carry it as their genre. Hard starts at 156 BPM, with a driven kick and a distorted rumble. Bounce starts at 152 BPM in D# minor, with an offbeat bass, piano chords and a hook up front.
-- See every layer enter and leave on one screen, and click to play from any bar.
-- Change energy, light, density and key as it plays, without stopping it.
+- Press play. Groove opens on eight bars at the peak. Full track plays the whole arrangement,
+  up to 208 bars (about six minutes, a club length).
+- Pick a style, or press Randomise for a new Groove family with its settings varied within that family's limits.
+- Change energy, light, density, key and tempo as it plays, without stopping it.
+- See every layer enter and leave on one screen, and click any bar to play from there.
 - Mute, solo, re-roll or lock each part. With a part locked, New take and Randomise rewrite only the others.
-- Set each part's level, and the levels travel in share links.
-- Swap any drum sound for another recording, or drop in your own. Your own files stay in this browser and out of share links, and your own kick is measured so it's tuned to the key.
+- Set each part's level. Levels travel in share links.
+- Swap any drum sound for another recording, or drop in your own. Your own files stay in this
+  browser and out of share links, and your own kick is measured so it's tuned to the key.
 - Click the piano roll to add or remove a note everywhere that pattern repeats. Shift-click changes one bar.
+- Undo, redo, and go back to any of your last 30 takes, which survive a reload.
+- Drop in an audio file to set the tempo, key, energy and light from it. Nothing leaves your device.
 - Outside Groove, watch the model's note probabilities, then hold a note and it rewrites what follows.
-- Drop in an audio file to set the tempo, key, energy and light. Nothing leaves your device.
-- Loop 4, 8 or 16 bars, and export the loop as a WAV that repeats without a click, as stems or as MIDI.
-- Export the whole track as WAV or AIFF, seven stems in one zip (the kick on its own) or MIDI, at 24 or 16-bit and 48 or 44.1 kHz, without the parts you muted. Files are tagged with tempo, key and Camelot number for Rekordbox, Traktor and Serato. Or share a link that reopens the exact track.
-- Make a DJ version of a Groove: about eight minutes, with 32 bars of drums alone at each end (kick and hats first) and the rumble held back there, so it mixes in and out.
-- Export DJ tools: the peak's drums as a 16-bar loop, the same without the kick, and the build into the first drop, as tagged WAVs plus the drums as MIDI.
-- Drag the loop's MIDI or WAV straight from the Export menu into your DAW (Chrome and Edge).
-- Play the track on your own instruments over Web MIDI, with clock, start, stop and song position so a DAW follows (Chrome, Edge, Firefox).
+- Turn on Taste and Randomise learns which families and settings you keep and skip (see [Learning your taste](#learning-your-taste)).
+
+Keys: **Space** play and stop, **G** new take, **R** randomise, **L** cycle the loop,
+**⌘/Ctrl Z** undo, **⇧⌘/Ctrl Z** redo.
+
+## Take it into your DAW
+
+| | The loop (4, 8 or 16 bars, or a section) | The whole track |
+|---|---|---|
+| **Mix** | WAV or AIFF that repeats without a click | WAV or AIFF |
+| **Stems** | Zip of WAVs | Zip of WAVs |
+| **MIDI** | One file, a track per part | One file, a track per part |
+| **Ableton Live 12 set** | | Zip: stems, MIDI and section markers in one project |
+| **DJ tools** (Groove) | | Zip: the peak's drums as a 16-bar loop, the same without the kick, the build into the first drop, and the drums as MIDI |
+| **Drag out** (Chrome, Edge) | MIDI or WAV, straight from the Export menu into your DAW | |
+
+- **Formats:** 24 or 16-bit (16-bit is dithered), at 48 or 44.1 kHz. Parts you muted are left out.
+- **Tags:** tempo, key, Camelot number and the Beatport shelf as the genre, so Rekordbox, Traktor and Serato read them.
+- **Stems** are the kick on its own, clap and snare, hats and cymbals, percussion, the low
+  end, the music and the effects, all the same length from bar 1. They keep the master's
+  tone but not its compression or ceiling, so together they rebuild the mix.
+- **The Ableton set** unzips to a project folder. Open the `.als` in Live 12 (Intro and up):
+  the stems play on audio tracks, warped so they follow the set's tempo, every part sits on
+  a MIDI track ready for your own instruments, and each section has a locator. Live 11 and
+  earlier can't open Live 12 sets.
+- **DJ version** (Groove): about eight minutes, with 32 bars of drums alone at each end (kick
+  and hats first) and the rumble held back there, so it mixes in and out.
+- **Web MIDI out** (Chrome, Edge, Firefox): play the track on your own instruments, with
+  clock, start, stop and song position so a DAW follows.
+- **Share link:** reopens the exact track, settings and edits included.
+
+## Styles
+
+| Style | Shelf | Character |
+|---|---|---|
+| **Groove** | Peak Time / Driving | Twelve families, each built on one idea |
+| **Hypnotic** | Raw / Deep / Hypnotic | Turning loops, long echoes |
+| **Percussive** | Peak Time / Driving | Tuned toms, taps and hand claps |
+| **Raw** | Raw / Deep / Hypnotic | Anvil, brake drum, rumble |
+| **Dub** | Raw / Deep / Hypnotic | One chord, tape and space |
+| **Acid** | Peak Time / Driving | Accent, slide, resonance |
+| **Hard** | Hard Techno | A driven kick and a distorted rumble, from 156 BPM |
+| **Bounce** | Hard Techno | Offbeat bass, piano chords and a hook up front, from 152 BPM in D# minor |
 
 ## How Groove is built
 
@@ -63,23 +103,38 @@ from them is used.
 - **Everything is on the grid.** Two club records measured within 2 ms of it, with no swing,
   so every voice plays dead on its step with only a hair of drift. The one push is a bright
   layer of the backbeat, 24 ms late.
-- **Mixed against real records.** The balance across eight bands, the sub holding between
-  kicks, and loudness (about -7.5 LUFS for Groove, -5 for Hard, -7 for Bounce) were measured on
-  reference tracks and matched within a couple of dB, up to 22 kHz. The chord stays mostly dry,
-  out of the low mids, except in Bounce, where the chord and hook carry the track.
-- **Clean at the top and at the peaks.** Each hit's velocity filter follows the analog curve to the top
-  of the band (the browser's own low-pass dulls everything above 16 kHz), and every export is held
-  under -1 dBTP by a look-ahead true-peak limiter, so it doesn't distort on a converter or in an MP3.
-  Hard's distortion is folded to mono before it is widened, so it survives a mono club system.
 - **Loops turn against the bar.** Percussion loops over 3, 5, 6, 7, 12 or more
   steps, so a short pattern takes several bars to repeat.
 - **Arrangement is addition and subtraction.** Layers enter and leave through the track, with
   small changes every 4 bars, and the sub leaves for a bar or two at the end of each 16-bar phrase.
-- **The low end is drums.** Outside the Acid style the bass never leaves the tonic, and its groove is
-  in the gaps and the weight.
-- **The harmony stays on the tonic.** A test checks every pitched lane in every style and key.
+- **The low end is drums.** Outside Acid and Bounce the bass never leaves the tonic, and its
+  groove is in the gaps and the weight. Bounce's bass plays the offbeat, and its kick is tuned
+  to sit between 65 and 92 Hz in every key.
+- **The harmony stays in key.** A test checks every pitched lane in every style and key.
 - **Repeats vary.** The kick stays steady. Hats, percussion, bass and synths shift in tuning,
   timing or brightness, and the variation is seeded, so an export matches what you heard.
+
+## Sound quality
+
+The mix is measured, not guessed: the same meters run on reference records and on our
+renders, and the balance is matched within a couple of dB in every band up to 22 kHz.
+
+| | Groove | Hard | Bounce |
+|---|---|---|---|
+| Loudness | about -8 LUFS | about -5 LUFS | about -7 LUFS |
+| True peak | -1 dBTP | -1 dBTP | -1 dBTP |
+| Stereo correlation | 0.98 | 0.83 to 0.89 | 0.96 |
+
+- **The top octave is there.** The browser's own low-pass filter cuts far too much near the
+  top of the band, and every hit is filtered by its velocity, so the hats lost their air.
+  Each hit now uses a filter that follows the analog curve all the way up
+  ([`master.ts`](src/lib/audio/master.ts)), with a gentle lift above 16 kHz.
+- **No overs.** Full mixes and loops end in a look-ahead true-peak limiter that holds them under
+  -1 dBTP, so they don't distort on a converter or in an MP3. A loop is limited as a loop, so
+  the gain at its end already leads into its start.
+- **Mono-safe.** The low end is mono, and Hard's distortion is folded to mono before it is
+  widened, so it survives a mono club system.
+- **Both sample rates are native.** At 44.1 kHz the recordings are decoded at 44.1 kHz rather than converted after the fact.
 
 ## Sounds
 
@@ -88,7 +143,7 @@ from them is used.
 | **Drums** | Original TR-808 recordings, Roland TR-8 hardware, hand claps, layered |
 | **Percussion** | 808 toms tuned to the key, rims, shaker, a real anvil and brake drum |
 | **Bass** | The tail of an original TR-808 kick for the sub, with a short filtered drum or impact for the knock |
-| **Chords** | A recorded Steinway grand by default; an upright piano, a pipe organ or a vibraphone instead |
+| **Chords** | A recorded Steinway B grand by default; an upright piano, a pipe organ or a vibraphone instead |
 | **Atmosphere** | A struck gong an octave down |
 | **Sequence** | Yamaha TX81Z hardware through a fast filter |
 | **Space** | Convolution reverb measured in Oxford's medieval Divinity School and York Guildhall |
@@ -96,8 +151,15 @@ from them is used.
 | **Echo** | A dub tape delay at a dotted eighth, with filtered, saturated repeats and wow |
 | **Texture** | Vinyl noise, and risers made from a scraped gong and a cymbal played backwards |
 
-The kick is tuned to the key, the low end is mono, and width folds down to mono. Each style
-has its own kit. Every recording is CC0 or CC BY: see [SOURCES.md](public/samples/SOURCES.md).
+The kick is tuned to the key and width folds down to mono. Each style has its own kit. Every
+recording is CC0, and the two reverb rooms are CC BY 4.0: see [SOURCES.md](public/samples/SOURCES.md).
+
+## Using what you make
+
+Sound × AI claims no rights in what you export. Many stores and distributors now refuse
+tracks made wholly by generators, so treat an export as a starting point: change it, add
+your own parts, make it yours before you release it. This isn't legal advice. The
+recordings' licences are in [SOURCES.md](public/samples/SOURCES.md).
 
 ## The model
 
@@ -114,8 +176,8 @@ on test, but choosing it for that reason would mean tuning on the test set.
 
 The first version (commit `14c88ae`) trained on exactly 20 hand-written motifs and had no
 held-out data, so there was no way to tell learning from memorising. I rebuilt the pipeline:
-real data, a split by artist, early stopping and baselines. The [model card](ml/MODEL_CARD.md) has the method and
-its limitations.
+real data from the Lakh MIDI Dataset, a split by artist (52 artists), early stopping and baselines. The
+[model card](ml/MODEL_CARD.md) has the method and its limitations.
 
 The corpus is 80s and 90s dance and pop, not dark groove, so the model is given a small
 job: the sequence line outside Groove, and the 303 line in Acid. Everything else is written
@@ -140,15 +202,6 @@ picks every family evenly. It leans towards a simulated listener's favourites. I
 baseline on held-out takes. And it finds nothing in coin flips. It hasn't been measured on real people yet:
 that needs real use, and a blind vote before and after.
 
-## Privacy and analytics
-
-Nothing you make leaves the browser. When `VITE_GOATCOUNTER` is set at build time (in
-`.env.production`, to `https://<code>.goatcounter.com/count`), the page counts visits and
-a handful of anonymous events with [GoatCounter](https://www.goatcounter.com/): no cookies, no
-personal data. The events are `play`, `listened-30s`, `randomise`, `export-*`, `drag-*`,
-`share`, `dj-version`, `midi-connect`, `taste-on`, `own-sample` and `return-*`. Without the
-variable, nothing is loaded.
-
 ## Audio analysis
 
 [`audio-analysis.ts`](src/lib/audio-analysis.ts) is plain DSP with no ML library:
@@ -162,10 +215,25 @@ The [tests](src/lib/audio-analysis.test.ts) check tempo to within 1 BPM on pulse
 signals. Real mixes are harder, especially dense, drum-heavy ones, so the app labels the key
 an estimate and you can change it in one click.
 
+## Privacy and analytics
+
+Nothing you make leaves the browser. When `VITE_GOATCOUNTER` is set at build time (in
+`.env.production`, to `https://<code>.goatcounter.com/count`), the page counts visits and
+a handful of anonymous events with [GoatCounter](https://www.goatcounter.com/): no cookies, no
+personal data. The events are `play`, `listened-30s`, `randomise`, `export-*`, `drag-*`,
+`share`, `dj-version`, `midi-connect`, `taste-on`, `own-sample` and `return-*`. Without the
+variable, nothing is loaded.
+
+## Browsers
+
+Any current browser plays and exports. Web MIDI out needs Chrome, Edge or Firefox, and dragging
+files out of the Export menu needs Chrome or Edge. On a phone, the Export menu also offers a link to finish on a computer.
+
 ## Stack
 
-Vite, React, TypeScript, the native Web Audio API, and Canvas.
-`@tonejs/midi` writes MIDI files. Training uses only NumPy.
+Vite, React, TypeScript, the native Web Audio API and Canvas, deployed on Vercel.
+`@tonejs/midi` writes MIDI files. The zip, WAV, AIFF, tag, gzip and Live set writers have no
+dependencies. Training uses only NumPy. CI runs the tests and the build on every push to main and every pull request.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and signal path.
 
@@ -174,7 +242,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and signal path.
 ```bash
 npm install
 npm run dev      # http://localhost:5173
-npm test         # 257 tests
+npm test         # 279 tests
 npm run build    # typecheck + production build
 ```
 
@@ -197,9 +265,10 @@ src/
 │   ├── MidiPanel.tsx         Web MIDI output and clock
 │   └── AudioDropzone, Credits
 └── lib/
-    ├── generative-engine.ts  writes the track
+    ├── generative-engine.ts  writes the track: styles, arrangement, mix
     ├── groove/               Groove's families, part choice, flow, composer and DJ version
     ├── writing.ts            randomness and note helpers both composers share
+    ├── labels.ts             names, shelves and colours the interface shows
     ├── history.ts            undo, redo, takes
     ├── neural-engine.ts      GRU forward pass and sampling
     ├── audio-analysis.ts     tempo and key detection
@@ -207,9 +276,19 @@ src/
     ├── taste.ts              preference learning from keeps and skips
     ├── analytics.ts          anonymous counts (GoatCounter), off unless configured
     ├── midi.ts               MIDI messages, clock and song position
-    ├── zip.ts                stems zip, no dependency
-    └── audio/                samples, kits, sound swaps, your own samples, graph, voices, player,
-                              render, true-peak limiter, loop slices, stems, DJ tools, WAV/AIFF tags
+    ├── zip.ts                zip writer, no dependency
+    ├── ableton.ts            Ableton Live 12 set (.als) writer
+    └── audio/
+        ├── samples.ts        loads and decodes the recordings, per sample rate
+        ├── kits.ts           each style's sounds, and the swaps
+        ├── own-samples.ts    your own sounds, kept in this browser
+        ├── graph.ts          channel strips, sends, rumble, master chain
+        ├── voices.ts         plays each note through its recording
+        ├── player.ts         live playback and the transport
+        ├── render.ts         offline export: mix, loops, stems, Live set, DJ tools, MIDI
+        ├── master.ts         true-peak limiter and the matched low-pass
+        ├── slice.ts          loop slices and stems
+        └── tags.ts           WAV and AIFF tags, Camelot
 ml/                           corpus builder, trainer, results, model card
 scripts/build_samples.py      builds the sample pack
 public/samples/               the recordings and their credits

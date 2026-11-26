@@ -32,6 +32,7 @@ export default function Credits({ onClose }: { onClose: () => void }) {
         <h2 id="credits-title">Sounds &amp; credits</h2>
         <button className="link" onClick={() => dialog.current?.close()}>Close</button>
       </div>
+      <p className="made-by">Sound × AI is designed and built by <a href="https://www.tangeniidhenga.com" target="_blank" rel="author noreferrer">Tangeni Idhenga</a>.</p>
       <p>Every sound starts as a sample: drum machines, synths, metal and rooms, repitched, filtered and driven here, in your browser.</p>
       <ul>
         {SOURCES.map((s) => (
