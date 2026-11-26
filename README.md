@@ -2,23 +2,21 @@
 
 ![CI](https://github.com/TangeniI/sound-x-ai/actions/workflows/ci.yml/badge.svg)
 
-[![Sound × AI](public/og.png)](https://sound-x-ai.vercel.app)
-
-**[▶ Open the live studio](https://sound-x-ai.vercel.app)**
+**[▶ Open the live studio](https://sound-x-ai.vercel.app)**: free, no signup, nothing to install.
 
 A free techno groove machine that runs entirely in your browser. It writes dark, hypnotic,
 percussion-led techno and plays it through recordings of real drum machines, metal, pianos
 and rooms. Then you take it into your DAW: the loop, the stems, the MIDI, or a whole Ableton
 Live set. There's no backend, no API key and no account.
 
-**How it's made, in short:** Groove, the main style, is written by rules drawn from measuring
-twelve reference records. In the other seven styles, the sequence line comes from a GRU I trained from scratch in NumPy,
-with hand-written back-propagation and Adam, on 9,248 riffs from real MIDI (13,502 in all,
-split by artist). On artists it never saw, it scores 1.24 nats against 1.56 for the n-gram
-baseline. The forward pass is re-implemented in TypeScript and checked against Python by a
-test. A custom Web Audio engine plays everything through real recordings and two measured
-rooms, with the same signal path for live playback and export. The mix is matched to
-commercial records by measurement.
+[![The studio: eight styles, the arrangement, the pattern editor and the track controls](.github/screenshot.png)](https://sound-x-ai.vercel.app)
+
+**It starts your track; it doesn't finish it for you.** There's no AI audio model here. Every
+sound is a recording of a real instrument or room, the patterns come from rules and a small
+riff model, and everything is built to be taken apart in your DAW and made your own.
+
+Questions, ideas or something you made with it? Post in
+[Discussions](https://github.com/TangeniI/sound-x-ai/discussions).
 
 ## Make a track
 
@@ -83,6 +81,17 @@ Keys: **Space** play and stop, **G** new take, **R** randomise, **L** cycle the 
 | **Acid** | Peak Time / Driving | Accent, slide, resonance |
 | **Hard** | Hard Techno | A driven kick and a distorted rumble, from 156 BPM |
 | **Bounce** | Hard Techno | Offbeat bass, piano chords and a hook up front, from 152 BPM in D# minor |
+
+## How it's made
+
+Groove, the main style, is written by rules drawn from measuring twelve reference records.
+In the other seven styles, the sequence line comes from a GRU I trained from scratch in NumPy,
+with hand-written back-propagation and Adam, on 9,248 riffs from real MIDI (13,502 in all,
+split by artist). On artists it never saw, it scores 1.24 nats against 1.56 for the n-gram
+baseline. The forward pass is re-implemented in TypeScript and checked against Python by a
+test. A custom Web Audio engine plays everything through real recordings and two measured
+rooms, with the same signal path for live playback and export. The mix is matched to
+commercial records by measurement.
 
 ## How Groove is built
 
@@ -248,7 +257,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and signal path.
 ```bash
 npm install
 npm run dev      # http://localhost:5173
-npm test         # 279 tests
+npm test         # 289 tests
 npm run build    # typecheck + production build
 ```
 

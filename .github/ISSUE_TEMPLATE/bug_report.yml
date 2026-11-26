@@ -1,0 +1,28 @@
+name: Bug report
+description: Something doesn't play, export or look right
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, and what you heard or saw instead of what you expected.
+    validations:
+      required: true
+  - type: input
+    id: share
+    attributes:
+      label: Share link
+      description: Press Share in the studio and paste the link, so the exact take can be rebuilt.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and system
+      placeholder: Chrome 131 on macOS 15
+    validations:
+      required: true
+  - type: input
+    id: daw
+    attributes:
+      label: DAW or DJ software, if it's about an export
+      placeholder: Ableton Live 12, Rekordbox 7
