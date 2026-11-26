@@ -84,6 +84,15 @@ export function riffInfo(tags: Tags): Uint8Array {
   return out;
 }
 
+/** A sample as an integer: 24-bit, or 16-bit with triangular dither. */
+export function quantize(x: number, bits: 16 | 24): number {
+  // far below anything audible, so 24-bit needs no dither
+  if (bits === 24) return Math.max(-0x800000, Math.min(0x7fffff, Math.round(x * 0x7fffff)));
+  // one LSB of noise turns rounding distortion on fades into steady hiss
+  const dither = x === 0 ? 0 : Math.random() - Math.random();
+  return Math.max(-0x8000, Math.min(0x7fff, Math.round(x * 0x7fff + dither)));
+}
+
 /** Interleaved PCM: 24-bit, or 16-bit with triangular dither. */
 export function pcm(buffer: AudioBuffer, bits: 16 | 24, little: boolean): Uint8Array {
   const channels = buffer.numberOfChannels;
@@ -95,19 +104,13 @@ export function pcm(buffer: AudioBuffer, bits: 16 | 24, little: boolean): Uint8A
   let at = 0;
   for (let i = 0; i < buffer.length; i++) {
     for (let c = 0; c < channels; c++) {
-      const x = data[c][i];
+      const v = quantize(data[c][i], bits);
       if (bits === 24) {
-        // far below anything audible, so 24-bit needs no dither
-        const v = Math.max(-0x800000, Math.min(0x7fffff, Math.round(x * 0x7fffff)));
         const [lo, mid, hi] = [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff];
         out[at] = little ? lo : hi;
         out[at + 1] = mid;
         out[at + 2] = little ? hi : lo;
-      } else {
-        // one LSB of noise turns rounding distortion on fades into steady hiss
-        const dither = x === 0 ? 0 : Math.random() - Math.random();
-        view.setInt16(at, Math.max(-0x8000, Math.min(0x7fff, Math.round(x * 0x7fff + dither))), little);
-      }
+      } else view.setInt16(at, v, little);
       at += bytes;
     }
   }

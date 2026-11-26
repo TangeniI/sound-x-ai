@@ -18,7 +18,8 @@
 import type { Lane, NoteEvent, Track } from "../../types";
 import { sliceTrack, stemsFor, stemTrack } from "./slice";
 import { makeZip, type ZipEntry } from "../zip";
-import { chunk, id3, pcm, riffInfo, type Tags } from "./tags";
+import { chunk, encodeAiff, id3, pcm, riffInfo, type Tags } from "./tags";
+import { encodeFlac } from "./flac";
 import { applyMix, buildGraph, CHANNELS, setChannel, type ChannelId } from "./graph";
 import { trackSamples } from "./kits";
 import { sampleBank } from "./samples";
@@ -153,13 +154,22 @@ export async function renderLoop(track: Track, startBar: number, bars: number, s
 
 export interface Range { startBar: number; bars: number }
 
+export type FileType = "wav" | "aiff" | "flac";
+export const EXTENSION: Record<FileType, string> = { wav: "wav", aiff: "aif", flac: "flac" };
+
+/** A buffer in the chosen file type. */
+export function encodeAudio(buffer: AudioBuffer, type: FileType, bits: 16 | 24, tags?: Tags): Blob {
+  return type === "flac" ? encodeFlac(buffer, bits, tags) : type === "aiff" ? encodeAiff(buffer, bits, tags) : encodeWav(buffer, bits, tags);
+}
+const bytesOf = async (blob: Blob) => new Uint8Array(await blob.arrayBuffer());
+
 /**
- * Every stem as a WAV in one zip, all the same length. Each is rendered on its
+ * Every stem in one zip, all the same length. Each is rendered on its
  * own, so the progress counts stems as well as time.
  */
 export async function stemsZip(
   track: Track, sampleRate: number, audible: ReadonlySet<ChannelId>, name: string,
-  { range, bits = 24, rate, levels, onProgress = () => {} }: { range?: Range; bits?: 16 | 24; rate?: number; levels?: RenderOptions["levels"]; onProgress?: (p: number, stem: string) => void },
+  { range, bits = 24, rate, type = "wav", levels, onProgress = () => {} }: { range?: Range; bits?: 16 | 24; rate?: number; type?: FileType; levels?: RenderOptions["levels"]; onProgress?: (p: number, stem: string) => void },
 ): Promise<Blob> {
   const stems = stemsFor(track, audible);
   const files: ZipEntry[] = [];
@@ -167,7 +177,7 @@ export async function stemsZip(
     const part = stemTrack(track, stem);
     const options: RenderOptions = { only: stem.only, audible, levels, rate, onProgress: (p) => onProgress((i + p) / stems.length, stem.name) };
     const audio = range ? await renderLoop(part, range.startBar, range.bars, sampleRate, options) : await renderTrack(part, sampleRate, options);
-    files.push({ name: `${name}/${String(i + 1).padStart(2, "0")}-${stem.name}.wav`, data: new Uint8Array(await encodeWav(audio, bits).arrayBuffer()) });
+    files.push({ name: `${name}/${String(i + 1).padStart(2, "0")}-${stem.name}.${EXTENSION[type]}`, data: await bytesOf(encodeAudio(audio, type, bits)) });
   }
   return makeZip(files);
 }
@@ -180,28 +190,33 @@ const PITCHED = new Set(["low-end", "music", "fx"]);
 /**
  * An Ableton Live project: the set, and its stems beside it in Samples/Imported.
  * Unzipped, the folder opens in Live 12 with the stems playing the mix, the parts
- * as MIDI clips to put instruments on, and the sections marked.
+ * as MIDI clips to put instruments on, and the sections marked. The stems are
+ * FLAC, which Live reads, so a whole track fits in a download.
+ *
+ * With a range, it is a loop instead: the stems rendered to repeat seamlessly,
+ * clips that keep repeating as they are drawn out, and the set looping them.
  */
 export async function abletonZip(
   track: Track, sampleRate: number, audible: ReadonlySet<ChannelId>, name: string,
-  { bits = 24, rate, levels, onProgress = () => {} }: { bits?: 16 | 24; rate?: number; levels?: RenderOptions["levels"]; onProgress?: (p: number, stem: string) => void },
+  { range, bits = 24, rate, levels, onProgress = () => {} }: { range?: Range; bits?: 16 | 24; rate?: number; levels?: RenderOptions["levels"]; onProgress?: (p: number, stem: string) => void },
 ): Promise<Blob> {
   const folder = `${name} Project`;
   const stems = stemsFor(track, audible);
   const files: ZipEntry[] = [];
   const audio: AlsAudioTrack[] = [];
   for (const [i, stem] of stems.entries()) {
-    const buffer = await renderTrack(stemTrack(track, stem), sampleRate, {
-      only: stem.only, audible, levels, rate, onProgress: (p) => onProgress((i + p) / stems.length, stem.name),
-    });
-    const file = `Samples/Imported/${String(i + 1).padStart(2, "0")}-${stem.name}.wav`;
-    files.push({ name: `${folder}/${file}`, data: new Uint8Array(await encodeWav(buffer, bits).arrayBuffer()) });
+    const part = stemTrack(track, stem);
+    const options: RenderOptions = { only: stem.only, audible, levels, rate, onProgress: (p) => onProgress((i + p) / stems.length, stem.name) };
+    const buffer = range ? await renderLoop(part, range.startBar, range.bars, sampleRate, options) : await renderTrack(part, sampleRate, options);
+    const file = `Samples/Imported/${String(i + 1).padStart(2, "0")}-${stem.name}.flac`;
+    files.push({ name: `${folder}/${file}`, data: await bytesOf(encodeFlac(buffer, bits)) });
     audio.push({ name: stem.name, file, frames: buffer.length, sampleRate: buffer.sampleRate, warp: PITCHED.has(stem.name) ? "tones" : "beats", color: STEM_COLOR[stem.name] ?? 0 });
   }
 
   const beatsPerSec = track.bpm / 60;
+  const span = range ? sliceTrack(track, range.startBar, range.bars) : track;
   const lanes = new Map<Lane, AlsMidiTrack>();
-  for (const n of track.notes) {
+  for (const n of span.notes) {
     if (n.instrument === "fx" || !audible.has(n.instrument)) continue;
     const lane = n.instrument as Lane;
     if (!lanes.has(lane)) lanes.set(lane, { name: `${LANE_LABEL[lane]} MIDI`, notes: [], color: LANE_ALS_COLOR[lane] });
@@ -212,8 +227,9 @@ export async function abletonZip(
   const order: Lane[] = ["drums", "perc", "bass", "stab", "pad", "lead"];
   const xml = liveSetXml({
     bpm: track.bpm,
-    beats: Math.ceil((track.durationSec * beatsPerSec) / 4) * 4,
-    locators: track.sections.map((s) => ({ time: s.startBar * 4, name: SECTION_LABEL[s.kind] })),
+    beats: range ? range.bars * 4 : Math.ceil((track.durationSec * beatsPerSec) / 4) * 4,
+    loop: !!range,
+    locators: span.sections.map((s) => ({ time: s.startBar * 4, name: SECTION_LABEL[s.kind] })),
     audio,
     midi: order.flatMap((l) => (lanes.has(l) ? [lanes.get(l)!] : [])),
   });
@@ -228,7 +244,7 @@ export async function abletonZip(
  */
 export async function djToolsZip(
   track: Track, sampleRate: number, name: string, peak: Range,
-  { bits = 24, rate, levels, tags, onProgress = () => {} }: { bits?: 16 | 24; rate?: number; levels?: RenderOptions["levels"]; tags: (title: string) => Tags; onProgress?: (p: number, what: string) => void },
+  { bits = 24, rate, type = "wav", levels, tags, onProgress = () => {} }: { bits?: 16 | 24; rate?: number; type?: FileType; levels?: RenderOptions["levels"]; tags: (title: string) => Tags; onProgress?: (p: number, what: string) => void },
 ): Promise<Blob> {
   const drums = new Set<ChannelId>(["drums", "perc"]);
   const noKick = { ...track, notes: track.notes.map((n) => (n.instrument === "drums" && (n.pitch === 35 || n.pitch === 36) ? { ...n, velocity: 0 } : n)) };
@@ -248,7 +264,7 @@ export async function djToolsZip(
   for (const [i, job] of jobs.entries()) {
     const audio = await job.render((p) => onProgress((i + p) / jobs.length, job.file));
     const title = `${name}-${job.file}`;
-    files.push({ name: `${name}-dj-tools/${title}.wav`, data: new Uint8Array(await encodeWav(audio, bits, tags(title)).arrayBuffer()) });
+    files.push({ name: `${name}-dj-tools/${title}.${EXTENSION[type]}`, data: await bytesOf(encodeAudio(audio, type, bits, tags(title))) });
   }
   const drumsOnly = sliceTrack({ ...track, notes: track.notes.filter((n) => n.instrument === "drums" || n.instrument === "perc") }, peak.startBar, peak.bars);
   files.push({ name: `${name}-dj-tools/${name}-drums-${peak.bars}bars.mid`, data: new Uint8Array(await (await encodeMidi(drumsOnly)).arrayBuffer()) });

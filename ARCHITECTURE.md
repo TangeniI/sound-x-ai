@@ -30,9 +30,9 @@ trained offline in NumPy and shipped as weights. Everything else runs in the bro
  ┌───────────────────────┐  ┌─────────────────────────┐  ┌─────────────────────────┐
  │ lib/audio/player      │  │ lib/audio/render        │  │ UI: arrangement, roll,  │
  │ lookahead scheduler   │  │ OfflineAudioContext     │  │ mixer, neural heatmap,  │
- │ loop, seek, mixer,    │  │ WAV/AIFF, stems, MIDI,  │  │ master spectrum         │
- │ MIDI out + clock      │  │ Live set, DJ tools,     │  │                         │
- │                       │  │ true-peak limiter       │  │                         │
+ │ loop, seek, mixer,    │  │ WAV/AIFF/FLAC, stems,   │  │ master spectrum         │
+ │ MIDI out + clock      │  │ MIDI, Live set,         │  │                         │
+ │                       │  │ DJ tools, peak limiter  │  │                         │
  └───────────┬───────────┘  └────────────┬────────────┘  └─────────────────────────┘
              └─────────────┬─────────────┘
                            ▼
@@ -131,9 +131,19 @@ time, and measures the graph's own delay with a click so bar 1 is the first samp
   -1 dBTP. A backward pass eases the gain down over 1.5 ms before each peak and a forward pass
   releases it over 80 ms. A loop is treated as a ring, so the gain at its end already leads
   into its start. Stems aren't limited, so they still sum.
-- **Files.** WAV or AIFF at 24 bits or dithered 16, tagged with tempo, key, Camelot number and
-  genre (RIFF INFO and ID3 in a WAV, ID3 in an AIFF). MIDI goes through `@tonejs/midi`. Zips are stored,
-  not compressed, since audio barely compresses, and the writer has no dependency.
+- **Files.** WAV, AIFF or FLAC at 24 bits or dithered 16, tagged with tempo, key, Camelot
+  number and genre (RIFF INFO and ID3 in a WAV, ID3 in an AIFF, Vorbis comments in a FLAC). All
+  three quantize through one function, so a FLAC decodes to exactly the WAV's samples. MIDI goes
+  through `@tonejs/midi`. Zips are stored, not compressed: the audio inside is either PCM, which
+  general-purpose compression barely shrinks, or FLAC, which is already compressed.
+- **FLAC** (`flac.ts`), with no dependency. Blocks of 4,096 samples; each channel is predicted
+  by whichever fixed polynomial (order 0 to 4) leaves the smallest error, and the error is
+  Rice-coded in up to 256 partitions, each with its own parameter. A block of one repeated
+  value (silence) is a single number. Stereo is stored as whichever of left/right, left/side,
+  side/right or mid/side costs least. The MD5 of the audio is left unset, which the format
+  allows. LPC prediction, as the reference encoder uses, would save a few percent more; fixed
+  predictors keep the encoder short and fast. Tested by a decoder in the test suite that
+  checks every CRC, and by ffmpeg decoding renders bit for bit.
 - **Ableton Live set** (`ableton.ts`). A `.als` is gzipped XML. Live fills in its own defaults
   for anything a set leaves out, so the writer emits only what the take decides: the tempo,
   a locator per section, an audio track per stem and a MIDI track per part. Two things are
@@ -142,7 +152,10 @@ time, and measures the graph's own delay with a click so bar 1 is the first samp
   Samples are referenced relative to the set, so the unzipped folder opens as it is. Each
   stem has two warp markers, its start and its end in beats, which places every beat because
   it was rendered at the set's tempo: Beats mode for drums, Tones for anything pitched, both
-  available in Live Intro. The gzip uses the browser's own `CompressionStream`. It was tested
+  available in Live Intro. Stems are FLAC, which brings a whole track's set from the better
+  part of a gigabyte to a size a browser tab can hold. A loop's set holds the loop's stems,
+  rendered to repeat seamlessly, and its notes; its clips loop, and so does the set's
+  transport. The gzip uses the browser's own `CompressionStream`. It was tested
   by opening exports in Live 12 Intro and checking its log, its analysis files beside every
   stem, and that it stayed up.
 

@@ -42,6 +42,8 @@ export interface AlsSet {
   /** Length of the arrangement, in beats. */
   beats: number;
   locators: { time: number; name: string }[];
+  /** A loop: clips repeat when drawn out, and the set loops the whole length. */
+  loop?: boolean;
   audio: AlsAudioTrack[];
   midi: AlsMidiTrack[];
 }
@@ -60,11 +62,11 @@ function name(n: string): string {
   return `<Name>${v("EffectiveName", n)}${v("UserName", n)}${v("Annotation", "")}${v("MemorizedFirstClipName", "")}</Name>`;
 }
 
-/** The parts every clip shares: where it sits, how long it is, and that it doesn't loop. */
-function clipHead(start: number, end: number, label: string, color: number): string {
+/** The parts every clip shares: where it sits, how long it is, and whether it repeats. */
+function clipHead(start: number, end: number, label: string, color: number, loop: boolean): string {
   return [
     v("LomId", 0), v("LomIdView", 0), v("CurrentStart", start), v("CurrentEnd", end),
-    `<Loop>${v("LoopStart", 0)}${v("LoopEnd", end - start)}${v("StartRelative", 0)}${v("LoopOn", false)}${v("OutMarker", end - start)}${v("HiddenLoopStart", 0)}${v("HiddenLoopEnd", end - start)}</Loop>`,
+    `<Loop>${v("LoopStart", 0)}${v("LoopEnd", end - start)}${v("StartRelative", 0)}${v("LoopOn", loop)}${v("OutMarker", end - start)}${v("HiddenLoopStart", 0)}${v("HiddenLoopEnd", end - start)}</Loop>`,
     v("Name", label), v("Annotation", ""), v("Color", color), v("LaunchMode", 0), v("LaunchQuantisation", 0),
     `<TimeSignature><TimeSignatures><RemoteableTimeSignature Id="0">${v("Numerator", 4)}${v("Denominator", 4)}${v("Time", 0)}</RemoteableTimeSignature></TimeSignatures></TimeSignature>`,
     `<Envelopes><Envelopes /></Envelopes>`, v("Legato", false), v("Ram", false), `<GrooveSettings>${v("GrooveId", -1)}</GrooveSettings>`,
@@ -72,10 +74,10 @@ function clipHead(start: number, end: number, label: string, color: number): str
   ].join("");
 }
 
-function audioClip(t: AlsAudioTrack, bpm: number): string {
+function audioClip(t: AlsAudioTrack, bpm: number, loop: boolean): string {
   const seconds = t.frames / t.sampleRate;
   const beats = (seconds * bpm) / 60;
-  return `<AudioClip Id="0" Time="0">${clipHead(0, beats, t.name, t.color)}`
+  return `<AudioClip Id="0" Time="0">${clipHead(0, beats, t.name, t.color, loop)}`
     + `<SampleRef><FileRef>${v("RelativePathType", 1)}${v("RelativePath", t.file)}${v("Path", "")}${v("Type", 1)}${v("LivePackName", "")}${v("LivePackId", "")}</FileRef>`
     + `${v("DefaultDuration", t.frames)}${v("DefaultSampleRate", t.sampleRate)}</SampleRef>`
     + `${v("WarpMode", WARP_MODE[t.warp])}${v("Sync", true)}${v("HiQ", true)}${v("Fade", false)}`
@@ -85,7 +87,7 @@ function audioClip(t: AlsAudioTrack, bpm: number): string {
     + `${v("MarkersGenerated", false)}${v("IsSongTempoLeader", false)}</AudioClip>`;
 }
 
-function midiClip(t: AlsMidiTrack, beats: number): string {
+function midiClip(t: AlsMidiTrack, beats: number, loop: boolean): string {
   const byKey = new Map<number, AlsNote[]>();
   for (const n of t.notes) {
     const key = Math.max(0, Math.min(127, Math.round(n.pitch)));
@@ -99,7 +101,7 @@ function midiClip(t: AlsMidiTrack, beats: number): string {
     });
     return `<KeyTrack Id="${k}"><Notes>${notes.join("")}</Notes>${v("MidiKey", key)}</KeyTrack>`;
   });
-  return `<MidiClip Id="0" Time="0">${clipHead(0, beats, t.name, t.color)}`
+  return `<MidiClip Id="0" Time="0">${clipHead(0, beats, t.name, t.color, loop)}`
     + `<Notes><KeyTracks>${keys.join("")}</KeyTracks><NoteIdGenerator>${v("NextId", id)}</NoteIdGenerator></Notes>`
     + `${v("BankSelectCoarse", -1)}${v("BankSelectFine", -1)}${v("ProgramChange", -1)}</MidiClip>`;
 }
@@ -119,9 +121,9 @@ const freezer = () => `<FreezeSequencer>${slots()}<Sample><ArrangerAutomation><E
 export function liveSetXml(set: AlsSet): string {
   let trackId = 20;
   const audio = set.audio.map((t) => `<AudioTrack Id="${trackId++}">${name(t.name)}${v("Color", t.color)}${v("TrackGroupId", -1)}`
-    + `<DeviceChain><MainSequencer>${slots()}<Sample><ArrangerAutomation><Events>${audioClip(t, set.bpm)}</Events></ArrangerAutomation></Sample></MainSequencer>${freezer()}</DeviceChain></AudioTrack>`);
+    + `<DeviceChain><MainSequencer>${slots()}<Sample><ArrangerAutomation><Events>${audioClip(t, set.bpm, !!set.loop)}</Events></ArrangerAutomation></Sample></MainSequencer>${freezer()}</DeviceChain></AudioTrack>`);
   const midi = set.midi.map((t) => `<MidiTrack Id="${trackId++}">${name(t.name)}${v("Color", t.color)}${v("TrackGroupId", -1)}`
-    + `<DeviceChain><MainSequencer>${slots()}<ClipTimeable><ArrangerAutomation><Events>${midiClip(t, set.beats)}</Events></ArrangerAutomation></ClipTimeable></MainSequencer>${freezer()}</DeviceChain></MidiTrack>`);
+    + `<DeviceChain><MainSequencer>${slots()}<ClipTimeable><ArrangerAutomation><Events>${midiClip(t, set.beats, !!set.loop)}</Events></ArrangerAutomation></ClipTimeable></MainSequencer>${freezer()}</DeviceChain></MidiTrack>`);
   const locators = set.locators.map((l, i) => `<Locator Id="${i}">${v("LomId", 0)}${v("Time", l.time)}${v("Name", l.name)}${v("Annotation", "")}${v("IsSongStart", false)}</Locator>`);
   return `<?xml version="1.0" encoding="UTF-8"?>\n`
     + `<Ableton MajorVersion="5" MinorVersion="12.0_12117" SchemaChangeCount="10" Creator="Ableton Live 12.1" Revision="">`
@@ -129,6 +131,7 @@ export function liveSetXml(set: AlsSet): string {
     + `<Tracks>${audio.join("")}${midi.join("")}</Tracks>`
     + `<MainTrack><DeviceChain><Mixer><Tempo>${v("LomId", 0)}${v("Manual", set.bpm)}</Tempo><TimeSignature>${v("LomId", 0)}${v("Manual", 201)}</TimeSignature></Mixer></DeviceChain></MainTrack>`
     + scenes()
+    + `<Transport>${v("LoopOn", !!set.loop)}${v("LoopStart", 0)}${v("LoopLength", set.beats)}${v("LoopIsSongStart", false)}${v("CurrentTime", 0)}</Transport>`
     + `<Locators><Locators>${locators.join("")}</Locators></Locators>`
     + `</LiveSet></Ableton>\n`;
 }

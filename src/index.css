@@ -816,8 +816,8 @@ legend {
 .menu .licence { margin: 6px 6px 4px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
 
 .takes-wrap .menu { left: 0; right: auto; }
-/* Export sits beside Play, at the right: its menu opens leftward so it stays on screen */
-.export-wrap .menu { left: auto; right: 0; }
+/* Export sits beside Play: its menu opens rightward, and Transport nudges any menu back inside the window */
+.export-wrap .menu { left: 0; right: auto; }
 .drag-out { display: flex; align-items: center; gap: 6px; padding: 6px 10px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; font-size: 12px; color: var(--muted); }
 .drag-out > span:first-child { margin-right: auto; }
 .drag-chip { cursor: grab; user-select: none; padding: 4px 10px; border: 1px solid var(--signal); color: var(--signal); border-radius: 4px; font-size: 12px; }

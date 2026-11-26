@@ -9,8 +9,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyseAudioFile } from "../lib/audio-analysis";
 import { player } from "../lib/audio/player";
-import { abletonZip, djToolsZip, download, encodeMidi, encodeWav, renderLoop, renderTrack, stemsZip, type Range } from "../lib/audio/render";
-import { camelot, encodeAiff, keyName, type Tags } from "../lib/audio/tags";
+import { abletonZip, djToolsZip, download, encodeAudio, encodeMidi, encodeWav, EXTENSION, renderLoop, renderTrack, stemsZip, type FileType, type Range } from "../lib/audio/render";
+import { camelot, keyName, type Tags } from "../lib/audio/tags";
 import { sliceTrack } from "../lib/audio/slice";
 import type { ChannelId } from "../lib/audio/graph";
 import { DEFAULT_CONFIG, editPitch, generativeEngine, LENGTHS, newSeed } from "../lib/generative-engine";
@@ -45,12 +45,12 @@ function seconds(track: Track, r: Range) {
 
 export interface DragFile { kind: "MIDI" | "WAV"; name: string; type: string; url: string }
 
-export interface ExportFormat { bits: 16 | 24; rate: 44100 | 48000; type: "wav" | "aiff" }
+export interface ExportFormat { bits: 16 | 24; rate: 44100 | 48000; type: FileType }
 const FORMAT_KEY = "soundxai.export.v1";
 function loadFormat(): ExportFormat {
   try {
     const raw = JSON.parse(localStorage.getItem(FORMAT_KEY) ?? "{}");
-    return { bits: raw.bits === 16 ? 16 : 24, rate: raw.rate === 44100 ? 44100 : 48000, type: raw.type === "aiff" ? "aiff" : "wav" };
+    return { bits: raw.bits === 16 ? 16 : 24, rate: raw.rate === 44100 ? 44100 : 48000, type: raw.type === "aiff" || raw.type === "flac" ? raw.type : "wav" };
   } catch {
     return { bits: 24, rate: 48000, type: "wav" };
   }
@@ -498,7 +498,8 @@ export function useStudio() {
   }, []);
 
   const levels = () => latest.current.now.config.levels ?? {};
-  const encode = (audio: AudioBuffer, tags: Tags) => (format.type === "aiff" ? encodeAiff(audio, format.bits, tags) : encodeWav(audio, format.bits, tags));
+  const encode = (audio: AudioBuffer, tags: Tags) => encodeAudio(audio, format.type, format.bits, tags);
+  const fileName = (name: string) => `${name}.${EXTENSION[format.type]}`;
   const loopName = (t: Track, r: Range) => `${trackFileName(t)}-bars${r.startBar + 1}-${r.startBar + r.bars}`;
 
   const exportWav = useCallback(() => exporting("Rendering the mix", async (t) => {
@@ -507,9 +508,9 @@ export function useStudio() {
       onProgress: (p) => setStatus(`Rendering the mix ${Math.round(p * 100)}%`),
     });
     const name = trackFileName(t);
-    download(encode(audio, trackTags(t, name)), `${name}.${format.type === "aiff" ? "aif" : "wav"}`);
+    download(encode(audio, trackTags(t, name)), fileName(name));
     count(`export-mix-${format.type}${t.config.dj ? "-dj" : ""}`);
-    setStatus(`${format.type === "aiff" ? "AIFF" : "WAV"} downloaded, tagged ${trackTags(t, name).camelot} at ${t.bpm} BPM`);
+    setStatus(`${format.type.toUpperCase()} downloaded, tagged ${trackTags(t, name).camelot} at ${t.bpm} BPM`);
   }), [exporting, format]);
 
   const exportLoopWav = useCallback(() => exporting("Rendering loop", async (t) => {
@@ -520,7 +521,7 @@ export function useStudio() {
       onProgress: (p) => setStatus(`Rendering loop ${Math.round(p * 100)}%`),
     });
     const name = loopName(t, r);
-    download(encode(audio, trackTags(t, name)), `${name}.${format.type === "aiff" ? "aif" : "wav"}`);
+    download(encode(audio, trackTags(t, name)), fileName(name));
     count(`export-loop-${format.type}`);
     setStatus(`Loop downloaded: ${r.bars} bars at ${t.bpm} BPM`);
   }), [exporting, format, loopRange]);
@@ -530,7 +531,7 @@ export function useStudio() {
     if (loopOnly && !range) return setStatus("Choose a bar or section loop first");
     const name = range ? loopName(t, range) : trackFileName(t);
     const zip = await stemsZip(t, sampleRate(), player.audible(), name, {
-      range: range ?? undefined, bits: format.bits, rate: format.rate, levels: levels(),
+      range: range ?? undefined, bits: format.bits, rate: format.rate, type: format.type, levels: levels(),
       onProgress: (p, stem) => setStatus(`Rendering stems ${Math.round(p * 100)}%, ${stem}`),
     });
     download(zip, `${name}-stems.zip`);
@@ -538,17 +539,22 @@ export function useStudio() {
     setStatus("Stems downloaded");
   }), [exporting, format, loopRange]);
 
-  /** The whole take as an Ableton Live project: stems on audio tracks, the parts as MIDI, the sections marked. */
-  const exportAbleton = useCallback(() => exporting("Building the Live set", async (t) => {
-    const name = trackFileName(t);
+  /**
+   * The take, or just the loop, as an Ableton Live project: stems on audio tracks,
+   * the parts as MIDI, the sections marked.
+   */
+  const exportAbleton = useCallback((loopOnly: boolean) => exporting("Building the Live set", async (t) => {
+    const range = loopOnly ? loopRange() : undefined;
+    if (loopOnly && !range) return setStatus("Choose a bar or section loop first");
+    const name = range ? loopName(t, range) : trackFileName(t);
     const zip = await abletonZip(t, sampleRate(), player.audible(), name, {
-      bits: format.bits, rate: format.rate, levels: levels(),
+      range: range ?? undefined, bits: format.bits, rate: format.rate, levels: levels(),
       onProgress: (p, stem) => setStatus(`Building the Live set ${Math.round(p * 100)}%, ${stem}`),
     });
     download(zip, `${name}-ableton.zip`);
-    count("export-ableton");
+    count(range ? "export-loop-ableton" : "export-ableton");
     setStatus("Live set downloaded: unzip it and open the .als in Ableton Live 12");
-  }), [exporting, format]);
+  }), [exporting, format, loopRange]);
 
   // time heard on the current take, and what it said when the page closes
   useEffect(() => {
@@ -581,7 +587,7 @@ export function useStudio() {
   const exportDjTools = useCallback(() => exporting("Rendering DJ tools", async (t) => {
     const name = trackFileName(t);
     const zip = await djToolsZip(t, sampleRate(), name, peakBars(t, 16), {
-      bits: format.bits, rate: format.rate, levels: levels(), tags: (title) => trackTags(t, title),
+      bits: format.bits, rate: format.rate, type: format.type, levels: levels(), tags: (title) => trackTags(t, title),
       onProgress: (p, what) => setStatus(`Rendering DJ tools ${Math.round(p * 100)}%, ${what}`),
     });
     download(zip, `${name}-dj-tools.zip`);

@@ -2,9 +2,10 @@
  * lib/analytics.ts
  *
  * Anonymous counts, so we can tell whether anyone plays, exports or comes back.
- * GoatCounter: no cookies, no personal data, nothing about what you make. Off
- * unless VITE_GOATCOUNTER is set at build time (its count URL), and GoatCounter
- * itself ignores localhost, so development is never counted.
+ * Visits are counted by Vercel Web Analytics in production builds: no cookies,
+ * no personal data. Its free plan counts pages, not events, so the events go to
+ * GoatCounter, also cookieless, which is off unless VITE_GOATCOUNTER is set at
+ * build time (its count URL). Neither counts development.
  *
  * Events are counted as paths like "event/export-midi". The funnel we watch:
  * visit → listened-30s → export-* → return-*.
@@ -15,16 +16,30 @@ const ENDPOINT = import.meta.env.VITE_GOATCOUNTER as string | undefined;
 declare global {
   interface Window {
     goatcounter?: { count?: (v: { path: string; title?: string; event?: boolean }) => void; no_onload?: boolean };
+    va?: (...args: unknown[]) => void;
+    vaq?: unknown[][];
   }
 }
 
 const queue: string[] = [];
 let started = false;
 
-/** Load the counter (which also counts the page view) and record a return visit. */
+/** Vercel's visit counter, served by the deployment itself. */
+function startVercel(): void {
+  if (!import.meta.env.PROD || typeof document === "undefined" || location.hostname === "localhost") return;
+  window.va = window.va || ((...args: unknown[]) => { (window.vaq = window.vaq || []).push(args); });
+  const s = document.createElement("script");
+  s.defer = true;
+  s.src = "/_vercel/insights/script.js";
+  document.head.appendChild(s);
+}
+
+/** Load the counters (which also count the page view) and record a return visit. */
 export function startAnalytics(): void {
-  if (!ENDPOINT || started || typeof document === "undefined") return;
+  if (started || typeof document === "undefined") return;
   started = true;
+  startVercel();
+  if (!ENDPOINT) return;
   const s = document.createElement("script");
   s.async = true;
   s.src = "https://gc.zgo.at/count.js";

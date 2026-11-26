@@ -7,13 +7,19 @@
  * but Play and Export folds into a "More" menu.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMidi } from "../hooks/useMidi";
 import { LOOP_BARS, type DragFile, type LoopMode, type Studio } from "../hooks/useStudio";
 import { player } from "../lib/audio/player";
 import { familyOf } from "../lib/groove/parts";
 import { clock, NOTE_NAMES, SECTION_LABEL, STYLES } from "../lib/labels";
 import { MidiPanel } from "./MidiPanel";
+
+const FORMAT_TITLE = {
+  wav: "Opens everywhere",
+  aiff: "DJ software reads AIFF tags most reliably",
+  flac: "Lossless at about half the size or less. Live, FL Studio, Bitwig, Reaper and Rekordbox read it; for other apps, choose WAV",
+} as const;
 
 const LOOP_LABEL: Record<LoopMode, string> = {
   four: "Loop 4 bars", eight: "Loop 8 bars", sixteen: "Loop 16 bars", track: "Loop track", section: "Loop section", off: "Loop off",
@@ -23,12 +29,23 @@ export default function Transport({ studio }: { studio: Studio }) {
   const { track, ready, loadProgress, playing, status, busy, loop, copied } = studio;
   const [menuOpen, setMenuOpen] = useState<"export" | "more" | "takes" | "midi" | null>(null);
   const midi = useMidi();
-  const fileType = studio.format.type === "aiff" ? "AIFF" : "WAV";
+  const fileType = studio.format.type.toUpperCase();
   const bar = useRef<HTMLSpanElement>(null);
   const section = useRef<HTMLSpanElement>(null);
   const scrub = useRef<HTMLInputElement>(null);
   const time = useRef<HTMLSpanElement>(null);
   const meter = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+
+  // a menu opens from its button; where the layout puts that near an edge, move it back inside the window
+  useLayoutEffect(() => {
+    const menu = root.current?.querySelector<HTMLElement>(".menu");
+    if (!menu) return;
+    menu.style.translate = "";
+    const { left, right } = menu.getBoundingClientRect();
+    const shift = left < 8 ? 8 - left : right > innerWidth - 8 ? innerWidth - 8 - right : 0;
+    if (shift) menu.style.translate = `${Math.round(shift)}px 0`;
+  }, [menuOpen]);
 
   useEffect(() => {
     let raf = 0;
@@ -80,7 +97,7 @@ export default function Transport({ studio }: { studio: Studio }) {
     );
   });
   return (
-    <div className="transport" role="region" aria-label="Transport">
+    <div className="transport" role="region" aria-label="Transport" ref={root}>
       <div className="transport-main">
         <button className="play" onClick={studio.togglePlay} disabled={!ready} aria-keyshortcuts="Space">
           {!ready ? `Loading ${Math.round(loadProgress * 100)}%` : playing ? "Stop" : "Play"}
@@ -97,11 +114,12 @@ export default function Transport({ studio }: { studio: Studio }) {
               <button role="menuitem" disabled={!studio.hasLoop} onClick={run(studio.exportLoopWav)}>Loop ({fileType})</button>
               <button role="menuitem" disabled={!studio.hasLoop} onClick={run(() => studio.exportStems(true))}>Loop stems (zip)</button>
               <button role="menuitem" disabled={!studio.hasLoop} onClick={run(() => studio.exportMidi(true))}>Loop notes (MIDI)</button>
+              <button role="menuitem" disabled={!studio.hasLoop} onClick={run(() => studio.exportAbleton(true))} title="The loop's stems and parts in a set that loops them. Unzip, then open the .als">Loop as a Live 12 set (zip)</button>
               <span className="menu-head">Whole track</span>
               <button role="menuitem" onClick={run(studio.exportWav)}>Full mix ({fileType})</button>
               <button role="menuitem" onClick={run(() => studio.exportStems(false))}>Stems (zip)</button>
               <button role="menuitem" onClick={run(() => studio.exportMidi(false))}>Notes (MIDI)</button>
-              <button role="menuitem" onClick={run(studio.exportAbleton)} title="Stems on audio tracks, the parts as MIDI clips and the sections marked. Unzip, then open the .als">Ableton Live 12 set (zip)</button>
+              <button role="menuitem" onClick={run(() => studio.exportAbleton(false))} title="Stems on audio tracks, the parts as MIDI clips and the sections marked. Unzip, then open the .als">Ableton Live 12 set (zip)</button>
               {track?.family && <button role="menuitem" onClick={run(studio.exportDjTools)} title="Drum loop, tops loop and the build, to layer in a set">DJ tools (zip)</button>}
               <div className="format" role="group" aria-label="File format">
                 {([24, 16] as const).map((bits) => (
@@ -110,13 +128,14 @@ export default function Transport({ studio }: { studio: Studio }) {
                 {([48000, 44100] as const).map((rate) => (
                   <button key={rate} aria-pressed={studio.format.rate === rate} onClick={() => studio.setFormat({ ...studio.format, rate })}>{rate / 1000} kHz</button>
                 ))}
-                {(["wav", "aiff"] as const).map((type) => (
+                {(["wav", "aiff", "flac"] as const).map((type) => (
                   <button key={type} aria-pressed={studio.format.type === type} onClick={() => studio.setFormat({ ...studio.format, type })}
-                    title={type === "aiff" ? "DJ software reads AIFF tags most reliably" : undefined}>{type.toUpperCase()}</button>
+                    title={FORMAT_TITLE[type]}>{type.toUpperCase()}</button>
                 ))}
               </div>
               <p className="licence">
-                Files carry the tempo, key and Camelot number for DJ software. Stems are WAV: kick, clap and snare, hats, percussion, low end, music and effects, all the same length.
+                Files carry the tempo, key and Camelot number for DJ software. Stems come in the file type above: kick, clap and snare, hats, percussion, low end, music and effects, all the same length.
+                FLAC is lossless at about half the size or less. The Live sets always use it.
                 The recordings are CC0 and the two reverb rooms CC BY 4.0 (see Sounds &amp; credits).
                 Sound × AI claims no rights in what you export. Many stores now refuse tracks made wholly
                 by generators, so make it your own before you release it. This isn't legal advice.

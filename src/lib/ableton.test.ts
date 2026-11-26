@@ -107,6 +107,18 @@ describe("Ableton Live set", () => {
     expect(val(clip, "Notes/NoteIdGenerator/NextId")).toBe("4");
   });
 
+  it("plays a whole track through, and a loop round and round", () => {
+    expect(val(live, "Transport/LoopOn")).toBe("false");
+    const loop = one(parse(liveSetXml({ ...set, beats: 32, loop: true })), "LiveSet");
+    expect([val(loop, "Transport/LoopOn"), val(loop, "Transport/LoopStart"), val(loop, "Transport/LoopLength")]).toEqual(["true", "0", "32"]);
+    const clips = [
+      ...all(loop, "Tracks/AudioTrack/DeviceChain/MainSequencer/Sample/ArrangerAutomation/Events/AudioClip"),
+      ...all(loop, "Tracks/MidiTrack/DeviceChain/MainSequencer/ClipTimeable/ArrangerAutomation/Events/MidiClip"),
+    ];
+    expect(clips).toHaveLength(3);
+    for (const c of clips) expect(val(c, "Loop/LoopOn")).toBe("true");
+  });
+
   it("gives every track its own id", () => {
     const ids = one(live, "Tracks").children.map((t) => t.attrs.Id);
     expect(new Set(ids).size).toBe(ids.length);

@@ -44,22 +44,27 @@ Keys: **Space** play and stop, **G** new take, **R** randomise, **L** cycle the 
 
 | | The loop (4, 8 or 16 bars, or a section) | The whole track |
 |---|---|---|
-| **Mix** | WAV or AIFF that repeats without a click | WAV or AIFF |
-| **Stems** | Zip of WAVs | Zip of WAVs |
+| **Mix** | WAV, AIFF or FLAC that repeats without a click | WAV, AIFF or FLAC |
+| **Stems** | Zip, in the same file type | Zip, in the same file type |
 | **MIDI** | One file, a track per part | One file, a track per part |
-| **Ableton Live 12 set** | | Zip: stems, MIDI and section markers in one project |
+| **Ableton Live 12 set** | Zip: the loop's stems and MIDI in a set that loops them | Zip: stems, MIDI and section markers in one project |
 | **DJ tools** (Groove) | | Zip: the peak's drums as a 16-bar loop, the same without the kick, the build into the first drop, and the drums as MIDI |
 | **Drag out** (Chrome, Edge) | MIDI or WAV, straight from the Export menu into your DAW | |
 
-- **Formats:** 24 or 16-bit (16-bit is dithered), at 48 or 44.1 kHz. Parts you muted are left out.
+- **Formats:** WAV, AIFF or FLAC, 24 or 16-bit (16-bit is dithered), at 48 or 44.1 kHz. Parts you muted are left out.
+- **FLAC** is lossless: it decodes to exactly the samples of the WAV, at about a quarter to
+  a half of the size for music and far less for sparse stems. Live, FL Studio, Bitwig,
+  Reaper and Rekordbox read it; for anything else, choose WAV.
 - **Tags:** tempo, key, Camelot number and the Beatport shelf as the genre, so Rekordbox, Traktor and Serato read them.
 - **Stems** are the kick on its own, clap and snare, hats and cymbals, percussion, the low
   end, the music and the effects, all the same length from bar 1. They keep the master's
   tone but not its compression or ceiling, so together they rebuild the mix.
 - **The Ableton set** unzips to a project folder. Open the `.als` in Live 12 (Intro and up):
   the stems play on audio tracks, warped so they follow the set's tempo, every part sits on
-  a MIDI track ready for your own instruments, and each section has a locator. Live 11 and
-  earlier can't open Live 12 sets.
+  a MIDI track ready for your own instruments, and each section has a locator. The stems are
+  FLAC, about a third of the size of WAV (a 64-bar take's set: 59 MB instead of 199 MB).
+  The loop's set holds just the loop: its clips keep repeating as you draw them out, and the
+  set loops them from the start. Live 11 and earlier can't open Live 12 sets.
 - **DJ version** (Groove): about eight minutes, with 32 bars of drums alone at each end (kick
   and hats first) and the rumble held back there, so it mixes in and out.
 - **Web MIDI out** (Chrome, Edge, Firefox): play the track on your own instruments, with
@@ -217,10 +222,11 @@ an estimate and you can change it in one click.
 
 ## Privacy and analytics
 
-Nothing you make leaves the browser. When `VITE_GOATCOUNTER` is set at build time (in
-`.env.production`, to `https://<code>.goatcounter.com/count`), the page counts visits and
-a handful of anonymous events with [GoatCounter](https://www.goatcounter.com/): no cookies, no
-personal data. The events are `play`, `listened-30s`, `randomise`, `export-*`, `drag-*`,
+Nothing you make leaves the browser. The live site counts visits with
+[Vercel Web Analytics](https://vercel.com/docs/analytics): no cookies, no personal data, and
+nothing in development. Its free plan counts pages, not button presses, so events go to
+[GoatCounter](https://www.goatcounter.com/), also cookieless, when `VITE_GOATCOUNTER` is set at
+build time (in `.env.production`, to `https://<code>.goatcounter.com/count`). The events are `play`, `listened-30s`, `randomise`, `export-*`, `drag-*`,
 `share`, `dj-version`, `midi-connect`, `taste-on`, `own-sample` and `return-*`. Without the
 variable, nothing is loaded.
 
@@ -232,8 +238,8 @@ files out of the Export menu needs Chrome or Edge. On a phone, the Export menu a
 ## Stack
 
 Vite, React, TypeScript, the native Web Audio API and Canvas, deployed on Vercel.
-`@tonejs/midi` writes MIDI files. The zip, WAV, AIFF, tag, gzip and Live set writers have no
-dependencies. Training uses only NumPy. CI runs the tests and the build on every push to main and every pull request.
+`@tonejs/midi` writes MIDI files. The zip, WAV, AIFF, FLAC, tag, gzip and Live set writers have
+no dependencies. Training uses only NumPy. CI runs the tests and the build on every push to main and every pull request.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and signal path.
 
@@ -274,7 +280,7 @@ src/
     ├── audio-analysis.ts     tempo and key detection
     ├── share.ts              permalinks
     ├── taste.ts              preference learning from keeps and skips
-    ├── analytics.ts          anonymous counts (GoatCounter), off unless configured
+    ├── analytics.ts          anonymous counts: visits (Vercel), events (GoatCounter, if set)
     ├── midi.ts               MIDI messages, clock and song position
     ├── zip.ts                zip writer, no dependency
     ├── ableton.ts            Ableton Live 12 set (.als) writer
@@ -287,6 +293,7 @@ src/
         ├── player.ts         live playback and the transport
         ├── render.ts         offline export: mix, loops, stems, Live set, DJ tools, MIDI
         ├── master.ts         true-peak limiter and the matched low-pass
+        ├── flac.ts           FLAC encoder, no dependency
         ├── slice.ts          loop slices and stems
         └── tags.ts           WAV and AIFF tags, Camelot
 ml/                           corpus builder, trainer, results, model card
