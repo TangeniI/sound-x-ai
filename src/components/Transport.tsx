@@ -101,6 +101,7 @@ export default function Transport({ studio }: { studio: Studio }) {
               <button role="menuitem" onClick={run(studio.exportWav)}>Full mix ({fileType})</button>
               <button role="menuitem" onClick={run(() => studio.exportStems(false))}>Stems (zip)</button>
               <button role="menuitem" onClick={run(() => studio.exportMidi(false))}>Notes (MIDI)</button>
+              <button role="menuitem" onClick={run(studio.exportAbleton)} title="Stems on audio tracks, the parts as MIDI clips and the sections marked. Unzip, then open the .als">Ableton Live 12 set (zip)</button>
               {track?.family && <button role="menuitem" onClick={run(studio.exportDjTools)} title="Drum loop, tops loop and the build, to layer in a set">DJ tools (zip)</button>}
               <div className="format" role="group" aria-label="File format">
                 {([24, 16] as const).map((bits) => (

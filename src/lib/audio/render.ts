@@ -15,7 +15,7 @@
  * as a loop, so the gain at its end already leads into its start.
  */
 
-import type { NoteEvent, Track } from "../../types";
+import type { Lane, NoteEvent, Track } from "../../types";
 import { sliceTrack, stemsFor, stemTrack } from "./slice";
 import { makeZip, type ZipEntry } from "../zip";
 import { chunk, id3, pcm, riffInfo, type Tags } from "./tags";
@@ -24,6 +24,8 @@ import { trackSamples } from "./kits";
 import { sampleBank } from "./samples";
 import { automate, makeRuntime, startAtmosphere, trigger } from "./voices";
 import { truePeakLimit } from "./master";
+import { gzip, liveSetXml, type AlsAudioTrack, type AlsMidiTrack } from "../ableton";
+import { LANE_LABEL, SECTION_LABEL } from "../labels";
 
 const TAIL_SEC = 3;
 const CHUNK_SEC = 1;
@@ -167,6 +169,55 @@ export async function stemsZip(
     const audio = range ? await renderLoop(part, range.startBar, range.bars, sampleRate, options) : await renderTrack(part, sampleRate, options);
     files.push({ name: `${name}/${String(i + 1).padStart(2, "0")}-${stem.name}.wav`, data: new Uint8Array(await encodeWav(audio, bits).arrayBuffer()) });
   }
+  return makeZip(files);
+}
+
+/** Live colour indices, so the stems and parts read as groups in the arrangement. */
+const STEM_COLOR: Record<string, number> = { kick: 14, "clap-snare": 15, "hats-cymbals": 16, perc: 17, "low-end": 1, music: 3, fx: 20 };
+const LANE_ALS_COLOR: Record<Lane, number> = { drums: 16, perc: 17, bass: 1, stab: 3, pad: 4, lead: 5 };
+const PITCHED = new Set(["low-end", "music", "fx"]);
+
+/**
+ * An Ableton Live project: the set, and its stems beside it in Samples/Imported.
+ * Unzipped, the folder opens in Live 12 with the stems playing the mix, the parts
+ * as MIDI clips to put instruments on, and the sections marked.
+ */
+export async function abletonZip(
+  track: Track, sampleRate: number, audible: ReadonlySet<ChannelId>, name: string,
+  { bits = 24, rate, levels, onProgress = () => {} }: { bits?: 16 | 24; rate?: number; levels?: RenderOptions["levels"]; onProgress?: (p: number, stem: string) => void },
+): Promise<Blob> {
+  const folder = `${name} Project`;
+  const stems = stemsFor(track, audible);
+  const files: ZipEntry[] = [];
+  const audio: AlsAudioTrack[] = [];
+  for (const [i, stem] of stems.entries()) {
+    const buffer = await renderTrack(stemTrack(track, stem), sampleRate, {
+      only: stem.only, audible, levels, rate, onProgress: (p) => onProgress((i + p) / stems.length, stem.name),
+    });
+    const file = `Samples/Imported/${String(i + 1).padStart(2, "0")}-${stem.name}.wav`;
+    files.push({ name: `${folder}/${file}`, data: new Uint8Array(await encodeWav(buffer, bits).arrayBuffer()) });
+    audio.push({ name: stem.name, file, frames: buffer.length, sampleRate: buffer.sampleRate, warp: PITCHED.has(stem.name) ? "tones" : "beats", color: STEM_COLOR[stem.name] ?? 0 });
+  }
+
+  const beatsPerSec = track.bpm / 60;
+  const lanes = new Map<Lane, AlsMidiTrack>();
+  for (const n of track.notes) {
+    if (n.instrument === "fx" || !audible.has(n.instrument)) continue;
+    const lane = n.instrument as Lane;
+    if (!lanes.has(lane)) lanes.set(lane, { name: `${LANE_LABEL[lane]} MIDI`, notes: [], color: LANE_ALS_COLOR[lane] });
+    for (const off of n.chord ?? [0]) {
+      lanes.get(lane)!.notes.push({ pitch: n.pitch + off, time: n.startTime * beatsPerSec, duration: Math.max(0.05, n.endTime - n.startTime) * beatsPerSec, velocity: n.velocity });
+    }
+  }
+  const order: Lane[] = ["drums", "perc", "bass", "stab", "pad", "lead"];
+  const xml = liveSetXml({
+    bpm: track.bpm,
+    beats: Math.ceil((track.durationSec * beatsPerSec) / 4) * 4,
+    locators: track.sections.map((s) => ({ time: s.startBar * 4, name: SECTION_LABEL[s.kind] })),
+    audio,
+    midi: order.flatMap((l) => (lanes.has(l) ? [lanes.get(l)!] : [])),
+  });
+  files.unshift({ name: `${folder}/${name}.als`, data: await gzip(xml) });
   return makeZip(files);
 }
 

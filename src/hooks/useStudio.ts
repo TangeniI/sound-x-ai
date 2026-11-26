@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyseAudioFile } from "../lib/audio-analysis";
 import { player } from "../lib/audio/player";
-import { djToolsZip, download, encodeMidi, encodeWav, renderLoop, renderTrack, stemsZip, type Range } from "../lib/audio/render";
+import { abletonZip, djToolsZip, download, encodeMidi, encodeWav, renderLoop, renderTrack, stemsZip, type Range } from "../lib/audio/render";
 import { camelot, encodeAiff, keyName, type Tags } from "../lib/audio/tags";
 import { sliceTrack } from "../lib/audio/slice";
 import type { ChannelId } from "../lib/audio/graph";
@@ -538,6 +538,18 @@ export function useStudio() {
     setStatus("Stems downloaded");
   }), [exporting, format, loopRange]);
 
+  /** The whole take as an Ableton Live project: stems on audio tracks, the parts as MIDI, the sections marked. */
+  const exportAbleton = useCallback(() => exporting("Building the Live set", async (t) => {
+    const name = trackFileName(t);
+    const zip = await abletonZip(t, sampleRate(), player.audible(), name, {
+      bits: format.bits, rate: format.rate, levels: levels(),
+      onProgress: (p, stem) => setStatus(`Building the Live set ${Math.round(p * 100)}%, ${stem}`),
+    });
+    download(zip, `${name}-ableton.zip`);
+    count("export-ableton");
+    setStatus("Live set downloaded: unzip it and open the .als in Ableton Live 12");
+  }), [exporting, format]);
+
   // time heard on the current take, and what it said when the page closes
   useEffect(() => {
     if (tasteRef.current.on && !take.current) beginTake(latest.current.now.config);
@@ -681,7 +693,7 @@ export function useStudio() {
   return {
     config, edits, track, ready, loadProgress, playing, status, busy, loop, seeks, muted, soloed, source, copied,
     locks, format, ownSamples, setSound, addOwnSound, removeOwnSound, update, togglePlay, newTake, randomise, rerollLane, toggleNote, toggleLock, pinRiff, seek, cycleLoop, playFull,
-    toggleMute, toggleSolo, setLevel, setFormat, analyse, exportWav, exportLoopWav, exportStems, exportMidi, exportDjTools, share, prepareDrag, draggedOut,
+    toggleMute, toggleSolo, setLevel, setFormat, analyse, exportWav, exportLoopWav, exportStems, exportMidi, exportAbleton, exportDjTools, share, prepareDrag, draggedOut,
     taste, setTasteOn, forgetTaste, exportTaste,
     hasLoop: inBars(loop) || loop === "section",
     takes: history.takes, canUndo: history.past.length > 0, canRedo: history.future.length > 0,
